@@ -14,6 +14,7 @@ declare global {
         body?: unknown,
       ) => Promise<{ ok: true; data: T } | { ok: false; error: string }>;
       chooseProject: () => Promise<string | null>;
+      writeClipboardText: (text: string) => Promise<void>;
       fileAction: (
         projectId: string,
         path: string,

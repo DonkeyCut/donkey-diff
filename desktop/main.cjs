@@ -6,6 +6,7 @@ const {
   shell,
   utilityProcess,
   Menu,
+  clipboard,
 } = require("electron");
 const path = require("node:path");
 const { pathToFileURL } = require("node:url");
@@ -13,6 +14,7 @@ const { mkdir, readFile, writeFile } = require("node:fs/promises");
 const { randomBytes } = require("node:crypto");
 const { createTelemetry } = require("./telemetry.cjs");
 const { resolveProjectFile } = require("./file-actions.cjs");
+const { registerClipboardHandler } = require("./clipboard.cjs");
 const { appEnvironment } = require("./environment.cjs");
 const environment = appEnvironment({
   isPackaged: app.isPackaged,
@@ -176,6 +178,7 @@ else {
         ownedFrame(event);
         return updater.getState();
       });
+      registerClipboardHandler({ ipcMain, clipboard, ownedFrame });
       ipcMain.handle(
         "file-action",
         async (event, projectId, relativePath, action) => {

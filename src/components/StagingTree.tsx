@@ -9,6 +9,7 @@ import {
   ResizablePanelGroup,
 } from "@/components/ui/resizable";
 import type { ChangedFile } from "@/types";
+import { writeClipboardText } from "@/api-clients/clipboard";
 
 export type StageLayer = "unstaged" | "staged";
 type Props = {
@@ -51,9 +52,9 @@ function SavedStagingTree({
     onlySaveAfterUserInteractions: true,
   });
   const copyPath = (value: string) => {
-    void navigator.clipboard
-      .writeText(value)
-      .catch((error: Error) => onError(error.message));
+    void writeClipboardText(value).catch((error: Error) =>
+      onError(error.message),
+    );
   };
   const fileAction = (path: string, action: "open" | "reveal") => {
     void window.donkeyDiffDesktop
@@ -163,7 +164,8 @@ function SavedStagingTree({
                 {
                   label: "Copy Path",
                   separatorBefore: true,
-                  onSelect: () => copyPath(`${projectPath}/${path}`),
+                  onSelect: () =>
+                    copyPath(`${projectPath.replace(/\/+$/, "")}/${path}`),
                 },
                 { label: "Copy Relative Path", onSelect: () => copyPath(path) },
               ]}

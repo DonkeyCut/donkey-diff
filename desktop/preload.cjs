@@ -12,6 +12,7 @@ contextBridge.exposeInMainWorld("donkeyDiffDesktop", {
   request: (route, method, body) =>
     ipcRenderer.invoke("git-request", route, method, body),
   chooseProject: () => ipcRenderer.invoke("choose-project"),
+  writeClipboardText: (text) => ipcRenderer.invoke("clipboard-write-text", text),
   fileAction: (projectId, path, action) =>
     ipcRenderer.invoke("file-action", projectId, path, action),
   onOpenProject: (callback) => {
