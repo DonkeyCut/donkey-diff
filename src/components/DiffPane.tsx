@@ -72,6 +72,11 @@ export function DiffPane({
     !!content?.path.toLowerCase().endsWith(".svg") &&
     !content.binary &&
     !content.conflict;
+  const isEmpty =
+    !!content &&
+    !content.conflict &&
+    content.old === "" &&
+    content.current === "";
   useEffect(() => setResolution(content?.current || ""), [content]);
   const options = useMemo(
     () => ({
@@ -115,7 +120,9 @@ export function DiffPane({
             aria-label="Previous change"
             variant="ghost"
             size="icon"
-            disabled={fileMode || !content || content.binary || !changeCount}
+            disabled={
+              fileMode || !content || content.binary || isEmpty || !changeCount
+            }
             onClick={() => navigation.current?.jump(-1)}
           >
             <ChevronUp size={15} />
@@ -125,7 +132,9 @@ export function DiffPane({
             aria-label="Next change"
             variant="ghost"
             size="icon"
-            disabled={fileMode || !content || content.binary || !changeCount}
+            disabled={
+              fileMode || !content || content.binary || isEmpty || !changeCount
+            }
             onClick={() => navigation.current?.jump(1)}
           >
             <ChevronDown size={15} />
@@ -269,6 +278,12 @@ export function DiffPane({
               </Button>
             </div>
           </>
+        ) : isEmpty ? (
+          <div className="empty">
+            <FileCode2 size={32} />
+            <h3>Empty file</h3>
+            <p>This file has no content.</p>
+          </div>
         ) : (
           <PreparedDiff
             ref={navigation}
