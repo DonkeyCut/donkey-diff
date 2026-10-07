@@ -22,8 +22,29 @@ function createUpdater({
     state = { ...next, currentVersion };
     publish(state);
   };
+  const check = () => {
+    if (
+      !native ||
+      [
+        "checking",
+        "installing",
+        "available",
+        "unavailable",
+        "requiresAdmin",
+      ].includes(state.status)
+    )
+      return state;
+    try {
+      emit({ status: "checking" });
+      native.check();
+    } catch (error) {
+      emit({ status: "failed", message: error.message });
+    }
+    return state;
+  };
   return {
     getState: () => state,
+    check,
     start() {
       if (!supported) {
         emit({
@@ -64,7 +85,7 @@ function createUpdater({
           emit({ ...state, status: "installing" });
           native.install();
         } else {
-          native.check();
+          return check();
         }
       } catch (error) {
         emit({ status: "failed", message: error.message });

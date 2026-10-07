@@ -30,6 +30,8 @@ let window;
 let token;
 let activeMutations = 0;
 let fileRead;
+let manualUpdateCheck = false;
+let showUpdateResult = () => {};
 const { createUpdater } = require("./updater.cjs");
 const updater = createUpdater({
   currentVersion: app.getVersion(),
@@ -38,6 +40,11 @@ const updater = createUpdater({
   publish: (state) => {
     if (window && !window.isDestroyed())
       window.webContents.send("update-state", state);
+    const menuItem =
+      Menu.getApplicationMenu()?.getMenuItemById("check-for-updates");
+    if (menuItem)
+      menuItem.enabled = !["checking", "installing"].includes(state.status);
+    showUpdateResult(state);
   },
 });
 const port = environment.port;
@@ -202,8 +209,7 @@ else {
           }
         },
       );
-      ipcMain.handle("update-action", async (event) => {
-        ownedFrame(event);
+      const activateUpdate = async () => {
         const chatStatus = await fetch(`http://127.0.0.1:${port}/chat-status`, {
           headers: { Authorization: `Bearer ${token}` },
           signal: AbortSignal.timeout(5000),
@@ -217,7 +223,49 @@ else {
           );
         void telemetry.capture("update_requested");
         return updater.activate();
+      };
+      ipcMain.handle("update-action", async (event) => {
+        ownedFrame(event);
+        return activateUpdate();
       });
+      showUpdateResult = (state) => {
+        if (
+          !manualUpdateCheck ||
+          ["notChecked", "checking", "installing"].includes(state.status)
+        )
+          return;
+        manualUpdateCheck = false;
+        const available = state.status === "available";
+        const options = {
+          type: available || state.status === "upToDate" ? "info" : "warning",
+          title: "Check for Updates",
+          message: available
+            ? `${environment.name} ${state.latestVersion} is available.`
+            : state.status === "upToDate"
+              ? `${environment.name} is up to date.`
+              : "Could not check for updates.",
+          detail:
+            state.status === "upToDate"
+              ? `You’re running version ${state.currentVersion}.`
+              : state.message ||
+                "Install the update and restart to use the latest version.",
+          buttons: available ? ["Install and Restart", "Not Now"] : ["OK"],
+          defaultId: 0,
+          cancelId: available ? 1 : 0,
+        };
+        const result =
+          window && !window.isDestroyed()
+            ? dialog.showMessageBox(window, options)
+            : dialog.showMessageBox(options);
+        void result
+          .then(({ response }) => {
+            if (available && response === 0) return activateUpdate();
+          })
+          .catch((error) =>
+            dialog.showErrorBox("Could not update Donkey Diff", error.message),
+          );
+      };
+
       ipcMain.handle("choose-project", async (event) => {
         ownedFrame(event);
         const result = await dialog.showOpenDialog(window, {
@@ -271,7 +319,28 @@ else {
       };
       Menu.setApplicationMenu(
         Menu.buildFromTemplate([
-          { role: "appMenu" },
+          {
+            label: environment.name,
+            submenu: [
+              { role: "about" },
+              {
+                id: "check-for-updates",
+                label: "Check for Updates…",
+                click: () => {
+                  manualUpdateCheck = true;
+                  showUpdateResult(updater.check());
+                },
+              },
+              { type: "separator" },
+              { role: "services" },
+              { type: "separator" },
+              { role: "hide" },
+              { role: "hideOthers" },
+              { role: "unhide" },
+              { type: "separator" },
+              { role: "quit" },
+            ],
+          },
           {
             label: "File",
             submenu: [

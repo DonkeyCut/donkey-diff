@@ -76,3 +76,24 @@ test("missing native support and invalid events report a recoverable status", ()
   emit({ status: "not-a-state" });
   assert.equal(updater.getState().status, "failed");
 });
+
+test("manual checks report an available update without installing it", () => {
+  const { updater, calls, emit } = setup();
+  updater.check();
+  updater.check();
+  assert.deepEqual(calls, ["check"]);
+  emit({ status: "available", latestVersion: "1.1" });
+  assert.equal(updater.check().status, "available");
+  assert.deepEqual(calls, ["check"]);
+  updater.activate();
+  assert.deepEqual(calls, ["check", "install"]);
+});
+
+test("manual checks can retry after an up-to-date result or error", () => {
+  const { updater, calls, emit } = setup();
+  emit({ status: "upToDate" });
+  assert.equal(updater.check().status, "checking");
+  emit({ status: "failed", message: "Offline" });
+  assert.equal(updater.check().status, "checking");
+  assert.deepEqual(calls, ["check", "check"]);
+});
