@@ -1,6 +1,13 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { lstat, readFile, realpath, stat, writeFile } from "node:fs/promises";
+import {
+  lstat,
+  readFile,
+  readlink,
+  realpath,
+  stat,
+  writeFile,
+} from "node:fs/promises";
 import path from "node:path";
 import type {
   ChangedFile,
@@ -364,16 +371,24 @@ export async function safeFile(cwd: string, name: string) {
     throw new Error("Invalid file path");
   const target = path.resolve(cwd, name);
   const base = await realpath(cwd);
+  // Resolve the parent so symlinked folders cannot redirect the path, but leave
+  // the entry itself unresolved: Git tracks a symlink as its target text.
   try {
-    const resolved = await realpath(target);
-    if (!resolved.startsWith(base + path.sep))
+    const parent = await realpath(path.dirname(target));
+    if (parent !== base && !parent.startsWith(base + path.sep))
       throw new Error("File is outside the repository");
-    if ((await lstat(target)).isSymbolicLink())
-      throw new Error("Symbolic links cannot be opened");
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
   }
   return target;
+}
+async function isSymlink(target: string) {
+  try {
+    return (await lstat(target)).isSymbolicLink();
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    return false;
+  }
 }
 const mediaTypes: Record<string, string> = {
   ".png": "image/png",
@@ -456,6 +471,8 @@ export async function fileContent(
       );
   const changed = files.find((f) => f.path === name);
   if (commit) await validateCommit(cwd, commit);
+  const worktreeLink =
+    !commit && layer !== "staged" && (await isSymlink(target));
   if (!commit && layer !== "staged") {
     try {
       if ((await lstat(target)).isDirectory())
@@ -481,7 +498,9 @@ export async function fileContent(
     };
   }
   const oldName = layer === "unstaged" ? name : changed?.oldPath || name;
-  const mediaType = mediaTypes[path.extname(name).toLowerCase()];
+  const mediaType = worktreeLink
+    ? undefined
+    : mediaTypes[path.extname(name).toLowerCase()];
   if (mediaType) {
     const oldRevision = `${!commit && layer === "unstaged" ? "" : base || (commit ? `${commit}^` : "HEAD")}:${oldName}`;
     const currentRead = async () => {
@@ -526,6 +545,7 @@ export async function fileContent(
       current = await optional(cwd, ["show", `${commit}:${name}`], "", signal);
     else if (layer === "staged")
       current = await optional(cwd, ["show", `:${name}`], "", signal);
+    else if (worktreeLink) current = await readlink(target);
     else {
       try {
         const stat = await lstat(target);
@@ -582,6 +602,8 @@ export async function sync(cwd: string) {
 }
 export async function resolveFile(cwd: string, name: string, content: string) {
   const target = await safeFile(cwd, name);
+  if (await isSymlink(target))
+    throw new Error("Symbolic links cannot be edited");
   const f = (await changedFiles(cwd)).find((x) => x.path === name);
   if (!f?.conflict) throw new Error("This file is no longer conflicted");
   if (/^(<{7}|={7}|>{7})( |$)/m.test(content))

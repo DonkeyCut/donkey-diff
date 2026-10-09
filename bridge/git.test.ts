@@ -216,8 +216,29 @@ test("file paths cannot escape a repository or access Git internals", async () =
   try {
     await assert.rejects(safeFile(dir, "../private"));
     await assert.rejects(safeFile(dir, ".git/config"));
+    await symlink("/etc", path.join(dir, "outside"));
+    await assert.rejects(
+      safeFile(dir, "outside/passwd"),
+      /outside the repository/,
+    );
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+test("symbolic links show their target without being followed", async () => {
+  const dir = await fixture();
+  try {
     await symlink("/etc/passwd", path.join(dir, "link"));
-    await assert.rejects(safeFile(dir, "link"));
+    assert.equal(await safeFile(dir, "link"), path.join(dir, "link"));
+    const content = await fileContent(dir, "link");
+    assert.equal(content.current, "/etc/passwd");
+    assert.equal(content.binary, false);
+    await assert.rejects(resolveFile(dir, "link", "x"), /cannot be edited/);
+    await git(dir, ["add", "--", "link"]);
+    assert.equal(
+      (await fileContent(dir, "link", undefined, undefined, "staged")).current,
+      "/etc/passwd",
+    );
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
