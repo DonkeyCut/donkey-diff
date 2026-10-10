@@ -127,9 +127,13 @@ export function parseStatus(raw: string): ChangedFile[] {
 }
 function addStats(files: ChangedFile[], stats: string) {
   const byPath = new Map(files.map((file) => [file.path, file]));
-  for (const entry of stats.split("\0").filter(Boolean)) {
-    const [add, del, ...names] = entry.split("\t");
-    const file = byPath.get(names.join("\t"));
+  const entries = stats.split("\0");
+  for (let i = 0; i < entries.length; i++) {
+    if (!entries[i]) continue;
+    const [add, del, ...names] = entries[i].split("\t");
+    // Renames leave the path empty and follow with the old and new paths.
+    const name = names.join("\t") || entries[(i += 2)];
+    const file = byPath.get(name);
     if (file) {
       file.additions += Number(add) || 0;
       file.deletions += Number(del) || 0;
@@ -183,7 +187,8 @@ export async function changedFiles(
     files,
     await optional(cwd, [
       "diff",
-      "--no-renames",
+      // Match status, which counts a rename as one edited file.
+      "--find-renames",
       "--numstat",
       "-z",
       ...(hasHead ? ["HEAD"] : ["--cached"]),
@@ -562,6 +567,7 @@ export async function fileContent(
   const conflict = changed?.conflict || false;
   return {
     path: name,
+    ...(oldName !== name ? { oldPath: oldName } : {}),
     old,
     current,
     binary: old.includes("\0") || current.includes("\0"),

@@ -355,7 +355,19 @@ test("cancellable file reads preserve staged renames and unstaged index comparis
       "staged",
     );
     assert.equal(staged.old, staged.current);
+    assert.equal(staged.oldPath, "hello.ts");
     assert.match(staged.old, /world/);
+    const [renamed] = await changedFiles(dir);
+    assert.equal(renamed.status, "R");
+    assert.equal(renamed.additions, 0);
+    assert.equal(renamed.deletions, 0);
+    await writeFile(
+      path.join(dir, "renamed.ts"),
+      'const hello = "world";\nconst more = 1;\n',
+    );
+    const [edited] = await changedFiles(dir);
+    assert.equal(edited.additions, 1);
+    assert.equal(edited.deletions, 0);
     await writeFile(path.join(dir, "renamed.ts"), "changed\n");
     const unstaged = await fileContent(
       dir,
@@ -365,6 +377,7 @@ test("cancellable file reads preserve staged renames and unstaged index comparis
       "unstaged",
     );
     assert.equal(unstaged.old, staged.current);
+    assert.equal(unstaged.oldPath, undefined);
     assert.equal(unstaged.current, "changed\n");
     const controller = new AbortController();
     controller.abort();

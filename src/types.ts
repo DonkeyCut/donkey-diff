@@ -56,6 +56,8 @@ export type Snapshot = {
 };
 export type FileContent = {
   path: string;
+  /** Set when the old side was read from a renamed path. */
+  oldPath?: string;
   old: string;
   current: string;
   /** Directory entries have no file contents to preview. */

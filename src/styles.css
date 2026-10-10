@@ -1168,6 +1168,22 @@ button svg {
   color: #bca17d;
   margin-top: 2px;
 }
+.rename-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--border);
+  color: var(--muted-foreground);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.rename-banner > svg {
+  flex-shrink: 0;
+}
+.rename-banner code {
+  color: var(--foreground);
+}
 .conflict-actions {
   padding: 10px;
   display: flex;

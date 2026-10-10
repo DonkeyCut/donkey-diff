@@ -15,6 +15,7 @@ import {
   ChevronUp,
   Check,
   AlertTriangle,
+  ArrowRight,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { SvgPreview } from "@/components/SvgPreview";
@@ -77,6 +78,12 @@ export function DiffPane({
     !content.conflict &&
     content.old === "" &&
     content.current === "";
+  // A pure rename has no diff, so show the file's text instead of a blank pane.
+  const unchangedRename =
+    !!content?.oldPath &&
+    !content.binary &&
+    !content.conflict &&
+    content.old === content.current;
   useEffect(() => setResolution(content?.current || ""), [content]);
   const options = useMemo(
     () => ({
@@ -285,14 +292,25 @@ export function DiffPane({
             <p>This file has no content.</p>
           </div>
         ) : (
-          <PreparedDiff
-            ref={navigation}
-            onChangesReady={setChangeCount}
-            onOverviewReady={updateOverview}
-            content={content}
-            options={options}
-            fileMode={fileMode}
-          />
+          <>
+            {content.oldPath && (
+              <div className="rename-banner" role="note">
+                <ArrowRight size={14} />
+                <span>
+                  Renamed from <code>{content.oldPath}</code>
+                  {unchangedRename && " · No content changes"}
+                </span>
+              </div>
+            )}
+            <PreparedDiff
+              ref={navigation}
+              onChangesReady={setChangeCount}
+              onOverviewReady={updateOverview}
+              content={content}
+              options={options}
+              fileMode={fileMode || unchangedRename}
+            />
+          </>
         )}
         {content && !content.binary && (
           <div className="diff-scroll-space" aria-hidden="true" />
