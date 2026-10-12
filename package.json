@@ -87,6 +87,22 @@
       ],
       "identity": null
     },
+    "dmg": {
+      "background": "desktop/assets/dmg-background.tiff",
+      "contents": [
+        {
+          "x": 130,
+          "y": 160,
+          "type": "file"
+        },
+        {
+          "x": 410,
+          "y": 160,
+          "type": "link",
+          "path": "/Applications"
+        }
+      ]
+    },
     "artifactName": "Donkey-Diff-${version}-${arch}.${ext}",
     "afterPack": "scripts/package-sparkle.cjs",
     "extraResources": [
