@@ -56,6 +56,7 @@ import { usePersistentBoolean } from "@/use-persistent-boolean";
 import { ProjectCache } from "@/project-cache";
 import { worktreeNavigation } from "@/sidebar-state";
 import { tabShortcutIndex } from "@/tab-shortcuts";
+import { useTabDrag } from "@/use-tab-drag";
 import { demo, demoContent } from "@/demo";
 import type {
   Action,
@@ -959,23 +960,35 @@ export function App() {
     }
     setMobileNav(false);
   };
+  const openTabs = openIds.flatMap((id) => {
+    const project = projects.find((p) => p.id === id);
+    return project ? [project] : [];
+  });
+  const tabDrag = useTabDrag(
+    openTabs.map((p) => p.id),
+    openProject,
+    (order) =>
+      setOpenIds((previous) => [
+        ...order,
+        ...previous.filter((id) => !order.includes(id)),
+      ]),
+  );
   const tabShortcutRef = useRef<(event: KeyboardEvent) => void>(() => {});
   useEffect(() => {
     tabShortcutRef.current = (event) => {
       if (!connected || event.defaultPrevented) return;
-      const tabs = projects.filter((project) => openIds.includes(project.id));
       const isMac = window.donkeyDiffDesktop
         ? window.donkeyDiffDesktop.platform === "darwin"
         : /Mac|iPhone|iPad/.test(navigator.platform);
       const index = tabShortcutIndex(
         event,
         isMac,
-        tabs.findIndex((project) => project.id === activeTab),
-        tabs.length,
+        openTabs.findIndex((project) => project.id === activeTab),
+        openTabs.length,
       );
       if (index === undefined) return;
       event.preventDefault();
-      openProject(tabs[index].id);
+      openProject(openTabs[index].id);
     };
   });
   useEffect(() => {
@@ -1186,7 +1199,7 @@ export function App() {
     <div className="app-shell">
       <div className="window-titlebar">
         <div
-          className={`project-tabs ${window.donkeyDiffDesktop?.platform === "darwin" ? "native-tabs" : ""}`}
+          className={`project-tabs ${window.donkeyDiffDesktop?.platform === "darwin" ? "native-tabs" : ""} ${tabDrag.dragging ? "tab-dragging" : ""}`}
         >
           {noProject && (
             <div className="project-tab active empty-project-tab">
@@ -1196,66 +1209,64 @@ export function App() {
               </div>
             </div>
           )}
-          {(noProject
-            ? []
-            : connected
-              ? projects.filter((p) => openIds.includes(p.id))
-              : [demo.project]
-          ).map((p) => {
-            const label = projectLabel(p);
-            const suffixLength = label.length > 20 ? 8 : 0;
-            const count = connected
-              ? changeCounts[projectForTab(p.id)]
-              : demo.files.length;
-            return (
-              <div
-                key={p.id}
-                className={`project-tab ${p.id === activeTab || !connected ? "active" : ""}`}
-              >
-                <button
-                  className="tab-select"
-                  aria-pressed={p.id === activeTab || !connected}
-                  aria-label={label}
-                  aria-describedby={
-                    count !== undefined && count > 0
-                      ? `tab-count-${p.id}`
-                      : undefined
-                  }
-                  title={p.path}
-                  onClick={() => openProject(p.id)}
+          {(noProject ? [] : connected ? openTabs : [demo.project]).map(
+            (p, index) => {
+              const label = projectLabel(p);
+              const suffixLength = label.length > 20 ? 8 : 0;
+              const count = connected
+                ? changeCounts[projectForTab(p.id)]
+                : demo.files.length;
+              return (
+                <div
+                  key={p.id}
+                  className={`project-tab ${p.id === activeTab || !connected ? "active" : ""}`}
+                  {...(connected ? tabDrag.tabProps(index) : {})}
                 >
-                  <Folder size={13} />
-                  <span className="tab-label">
-                    <span className="tab-label-start">
-                      {suffixLength ? label.slice(0, -suffixLength) : label}
+                  <button
+                    className="tab-select"
+                    aria-pressed={p.id === activeTab || !connected}
+                    aria-label={label}
+                    aria-describedby={
+                      count !== undefined && count > 0
+                        ? `tab-count-${p.id}`
+                        : undefined
+                    }
+                    title={p.path}
+                    onClick={() => openProject(p.id)}
+                  >
+                    <Folder size={13} />
+                    <span className="tab-label">
+                      <span className="tab-label-start">
+                        {suffixLength ? label.slice(0, -suffixLength) : label}
+                      </span>
+                      {suffixLength > 0 && (
+                        <span className="tab-label-end">
+                          {label.slice(-suffixLength)}
+                        </span>
+                      )}
                     </span>
-                    {suffixLength > 0 && (
-                      <span className="tab-label-end">
-                        {label.slice(-suffixLength)}
+                    {count !== undefined && count > 0 && (
+                      <span
+                        id={`tab-count-${p.id}`}
+                        className="tab-count"
+                        aria-label={`${count} changed file${count === 1 ? "" : "s"}`}
+                        title={`${count} changed file${count === 1 ? "" : "s"}`}
+                      >
+                        ({count})
                       </span>
                     )}
-                  </span>
-                  {count !== undefined && count > 0 && (
-                    <span
-                      id={`tab-count-${p.id}`}
-                      className="tab-count"
-                      aria-label={`${count} changed file${count === 1 ? "" : "s"}`}
-                      title={`${count} changed file${count === 1 ? "" : "s"}`}
-                    >
-                      ({count})
-                    </span>
-                  )}
-                </button>
-                <button
-                  className="tab-close"
-                  aria-label={`Close ${p.name} tab`}
-                  onClick={() => closeProjectTab(p.id)}
-                >
-                  <X size={12} />
-                </button>
-              </div>
-            );
-          })}
+                  </button>
+                  <button
+                    className="tab-close"
+                    aria-label={`Close ${p.name} tab`}
+                    onClick={() => closeProjectTab(p.id)}
+                  >
+                    <X size={12} />
+                  </button>
+                </div>
+              );
+            },
+          )}
           {!noProject && (
             <Dropdown
               trigger={

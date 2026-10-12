@@ -69,20 +69,23 @@ const snapshot = (index: number) => ({
   behind: 0,
 });
 
-async function fixture(page: Page, registerOnDemand = false, empty = false) {
+async function fixture(
+  page: Page,
+  registerOnDemand = false,
+  empty = false,
+  tabs = empty ? projects.slice(0, 2) : projects.slice(0, 1),
+) {
   const errors: string[] = [];
   const writes: string[] = [];
   page.on("pageerror", (error) => errors.push(error.message));
-  await page.addInitScript((empty) => {
-    sessionStorage.setItem("donkey-diff-token", "test");
-    localStorage.setItem("donkey-diff-auto-sync", "false");
-    localStorage.setItem(
-      "donkey-diff-tabs",
-      JSON.stringify(
-        empty ? ["1111111111111111", "2222222222222222"] : ["1111111111111111"],
-      ),
-    );
-  }, empty);
+  await page.addInitScript(
+    (tabs) => {
+      sessionStorage.setItem("donkey-diff-token", "test");
+      localStorage.setItem("donkey-diff-auto-sync", "false");
+      localStorage.setItem("donkey-diff-tabs", JSON.stringify(tabs));
+    },
+    tabs.map((p) => p.id),
+  );
   let sequence = 0;
   await page.route("http://127.0.0.1:43127/**", async (route) => {
     const request = route.request();
@@ -965,4 +968,42 @@ test("right-edge change markers jump to changes and hide in file mode", async ({
     .getByRole("button", { name: "File Tree", exact: true })
     .click();
   await expect(overview).toHaveCount(0);
+});
+
+test("project tabs reorder by dragging like browser tabs", async ({ page }) => {
+  const { errors } = await fixture(page, false, false, projects.slice(0, 3));
+  const tabs = page.locator(".project-tab");
+  const labels = page.locator(".project-tab .tab-select");
+  const names = () =>
+    labels.evaluateAll((els) => els.map((el) => el.getAttribute("aria-label")));
+  expect(await names()).toEqual(["donkey", "tree1", "tree2"]);
+
+  const first = (await tabs.nth(0).boundingBox())!;
+  const third = (await tabs.nth(2).boundingBox())!;
+  await page.mouse.move(first.x + 20, first.y + first.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(third.x + third.width / 2 + 20, first.y + 12, {
+    steps: 12,
+  });
+  // Neighbors slide left out of the dragged tab's way while it is held.
+  await page.waitForTimeout(200);
+  const held = (await tabs.nth(1).boundingBox())!;
+  expect(held.x).toBeLessThan(first.x + 10);
+  await page.screenshot({ path: "test-results/tab-drag.png" });
+  await page.mouse.up();
+
+  await expect.poll(names).toEqual(["tree1", "tree2", "donkey"]);
+  await expect(page.locator(".project-heading")).toHaveText("donkey");
+  expect(
+    await page.evaluate(() => localStorage.getItem("donkey-diff-tabs")),
+  ).toBe(
+    JSON.stringify([projects[1], projects[2], projects[0]].map((p) => p.id)),
+  );
+  expect(await tabs.nth(2).evaluate((el) => el.style.transform)).toBe("");
+
+  // A plain click still just selects, without reordering.
+  await labels.nth(0).click();
+  await expect(page.locator(".project-heading")).toHaveText("tree1");
+  expect(await names()).toEqual(["tree1", "tree2", "donkey"]);
+  expect(errors).toEqual([]);
 });

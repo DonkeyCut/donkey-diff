@@ -2965,3 +2965,7 @@ button svg {
   outline: 1px solid #fff;
   outline-offset: 1px;
 }
+
+.tab-dragging .project-tab:not(.active)::after {
+  opacity: 0;
+}
