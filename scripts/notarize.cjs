@@ -20,7 +20,17 @@ module.exports = async (context) => {
       "--issuer", issuer, "--wait", "--timeout", "20m", "--output-format", "json",
     ], { encoding: "utf8", timeout: 25 * 60 * 1000 }));
     if (result.status !== "Accepted") throw new Error("Apple notarization was not accepted: " + result.status);
-    execFileSync("xcrun", ["stapler", "staple", bundle], { stdio: "inherit" });
+    // Stapling fetches the ticket from Apple's CDN, which occasionally drops connections.
+    for (let attempt = 1; ; attempt++) {
+      try {
+        execFileSync("xcrun", ["stapler", "staple", bundle], { stdio: "inherit" });
+        break;
+      } catch (error) {
+        if (attempt === 5) throw error;
+        console.warn(`Stapling failed (attempt ${attempt}/5); retrying in ${attempt * 15}s.`);
+        await new Promise((resolve) => setTimeout(resolve, attempt * 15_000));
+      }
+    }
     execFileSync("xcrun", ["stapler", "validate", bundle], { stdio: "inherit" });
     execFileSync("spctl", ["--assess", "--type", "execute", "--verbose=2", bundle], { stdio: "inherit" });
   } finally {
