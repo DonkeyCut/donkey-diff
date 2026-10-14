@@ -72,7 +72,8 @@ createInterface({input:process.stdin}).on('line', line => {
  if(m.method==='initialize') send({id:m.id,result:{}});
  if(m.method==='model/list') send({id:m.id,result:{data:[
   {model:'gpt-6-astra',displayName:'GPT-6 Astra',isDefault:true},
-  {model:'gpt-6.1-sol',displayName:'GPT-6.1 Sol',defaultReasoningEffort:'medium',supportedReasoningEfforts:[{reasoningEffort:'low'},{reasoningEffort:'high'}]}
+  {model:'gpt-6.1-sol',displayName:'GPT-6.1 Sol',defaultReasoningEffort:'medium',supportedReasoningEfforts:[{reasoningEffort:'low'},{reasoningEffort:'high'}]},
+  {model:'gpt-5-hidden',displayName:'GPT-5 Hidden',hidden:true}
  ]}});
  if(m.method==='config/read') {
   if(realpathSync(m.params.cwd)!==process.cwd()) process.exit(1);
@@ -92,6 +93,7 @@ createInterface({input:process.stdin}).on('line', line => {
     assert.equal(codex.defaultEffort, "low");
     assert.equal(codex.models[1].name, "GPT-6.1 Sol");
     assert.deepEqual(codex.models[1].efforts, ["low", "high"]);
+    assert.equal(codex.models.length, 2);
     const claude = await claudeModels(bin, root);
     assert.equal(claude.defaultModel, "opus");
     assert.equal(

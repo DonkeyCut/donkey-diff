@@ -4,8 +4,11 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
 } from "@/components/ui/dropdown-menu";
-import type { ChatProvider, ChatProviderInfo } from "@/chat-types";
+import type { ChatModel, ChatProvider, ChatProviderInfo } from "@/chat-types";
+import { modelLineup } from "@/model-lineup";
 
 type Props = {
   providers: ChatProviderInfo[];
@@ -33,6 +36,16 @@ export function ChatModelPicker({
   const efforts = current?.efforts || [];
   const inheritedEffort =
     info?.defaultEffort || current?.defaultEffort || "Auto";
+  const item = (p: ChatProviderInfo, m: ChatModel) => (
+    <DropdownMenuItem
+      key={m.id}
+      disabled={!p.available}
+      onSelect={() => onSelect(p.id, m.id)}
+    >
+      <span>{m.name}</span>
+      {provider === p.id && model === m.id && <Check size={15} />}
+    </DropdownMenuItem>
+  );
   return (
     <div className="chat-model-controls">
       <Menu.Root>
@@ -54,21 +67,31 @@ export function ChatModelPicker({
           className="chat-model-menu"
         >
           <Menu.Label className="chat-menu-label">Select model</Menu.Label>
-          {providers.map((p, i) => (
-            <div key={p.id}>
-              {i > 0 && <DropdownMenuSeparator />}
-              {p.models.map((m) => (
-                <DropdownMenuItem
-                  key={m.id}
-                  disabled={!p.available}
-                  onSelect={() => onSelect(p.id, m.id)}
-                >
-                  <span>{m.name}</span>
-                  {provider === p.id && model === m.id && <Check size={15} />}
-                </DropdownMenuItem>
-              ))}
-            </div>
-          ))}
+          {providers.map((p, i) => {
+            const { current, older } = modelLineup(p.models);
+            return (
+              <div key={p.id}>
+                {i > 0 && <DropdownMenuSeparator />}
+                {current.map((m) => item(p, m))}
+                {older.length > 0 && (
+                  <Menu.Sub>
+                    <DropdownMenuSubTrigger
+                      disabled={!p.available}
+                      aria-label={`Older ${p.name} models`}
+                    >
+                      <span>Older models</span>
+                    </DropdownMenuSubTrigger>
+                    <DropdownMenuSubContent
+                      sideOffset={8}
+                      className="chat-model-menu"
+                    >
+                      {older.map((m) => item(p, m))}
+                    </DropdownMenuSubContent>
+                  </Menu.Sub>
+                )}
+              </div>
+            );
+          })}
         </DropdownMenuContent>
       </Menu.Root>
       {efforts.length > 0 && (

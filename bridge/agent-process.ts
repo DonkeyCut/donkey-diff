@@ -230,7 +230,9 @@ export async function codexModels(
     const config = record(
       record(await agent.request("config/read", { cwd })).config,
     );
-    const data = (Array.isArray(result.data) ? result.data : []).map(record);
+    const data = (Array.isArray(result.data) ? result.data : [])
+      .map(record)
+      .filter((m) => m.hidden !== true);
     const models: ChatModel[] = data
       .map((value) => {
         const m = record(value);

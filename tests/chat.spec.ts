@@ -84,6 +84,8 @@ test("project chat supports skill selection, real run state, stop, model switchi
           available: true,
           models: [
             { id: "sonnet", name: "Claude Sonnet", efforts: ["low", "high"] },
+            { id: "opus", name: "Claude Opus 5.5", efforts: [] },
+            { id: "claude-opus-4-8", name: "Claude Opus 4.8", efforts: [] },
           ],
         },
       ];
@@ -167,6 +169,15 @@ test("project chat supports skill selection, real run state, stop, model switchi
     page.getByRole("menuitem", { name: "Local Model", exact: true }),
   ).toBeVisible();
   await expect(page.getByRole("menuitem", { name: /default/i })).toHaveCount(0);
+  await expect(
+    page.getByRole("menuitem", { name: "Claude Opus 4.8", exact: true }),
+  ).toHaveCount(0);
+  await page
+    .getByRole("menuitem", { name: "Older Claude Code models", exact: true })
+    .hover();
+  await expect(
+    page.getByRole("menuitem", { name: "Claude Opus 4.8", exact: true }),
+  ).toBeVisible();
   await page
     .getByRole("menuitem", { name: "Claude Sonnet", exact: true })
     .click();

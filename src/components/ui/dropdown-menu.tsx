@@ -1,4 +1,5 @@
 import * as Menu from "@radix-ui/react-dropdown-menu";
+import { ChevronRight } from "lucide-react";
 import { Fragment, type ComponentProps, type ReactNode } from "react";
 import { cn } from "@/lib";
 
@@ -36,6 +37,43 @@ export function DropdownMenuItem({
       )}
       {...props}
     />
+  );
+}
+export function DropdownMenuSubTrigger({
+  className,
+  children,
+  ...props
+}: ComponentProps<typeof Menu.SubTrigger>) {
+  return (
+    <Menu.SubTrigger
+      data-slot="dropdown-menu-sub-trigger"
+      className={cn(
+        "flex cursor-default items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-none select-none focus:bg-accent focus:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50 data-[state=open]:bg-accent data-[state=open]:text-accent-foreground [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0 [&_svg]:text-muted-foreground",
+        className,
+      )}
+      {...props}
+    >
+      {children}
+      <ChevronRight className="ml-auto" />
+    </Menu.SubTrigger>
+  );
+}
+export function DropdownMenuSubContent({
+  className,
+  ...props
+}: ComponentProps<typeof Menu.SubContent>) {
+  return (
+    <Menu.Portal>
+      <Menu.SubContent
+        data-slot="dropdown-menu-sub-content"
+        collisionPadding={8}
+        className={cn(
+          "z-50 max-h-(--radix-dropdown-menu-content-available-height) min-w-32 overflow-x-hidden overflow-y-auto rounded-md border border-border bg-popover p-1 text-popover-foreground shadow-md",
+          className,
+        )}
+        {...props}
+      />
+    </Menu.Portal>
   );
 }
 export function DropdownMenuSeparator() {
