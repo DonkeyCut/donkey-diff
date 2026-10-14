@@ -190,7 +190,9 @@ export class ChatService {
           .map((entry) => `${entry.kind}: ${entry.text}`)
           .join("\n\n")
           .slice(-60000);
-        prompt = `Conversation context from the previous agent (for reference):\n${transcript}\n\nCurrent user request:\n${prompt}`;
+        // Earlier turns may end mid-task; framed loosely, the new agent treats
+        // them as unfinished work and resumes them unprompted.
+        prompt = `Earlier messages in this chat were handled by a different agent. They are background only: do not continue, resume, or redo anything from them unless the new message asks you to.\n<earlier_conversation>\n${transcript}\n</earlier_conversation>\n\nRespond only to the user's new message:\n${prompt}`;
         session.provider = input.provider;
         session.engineSessionId = undefined;
       }
