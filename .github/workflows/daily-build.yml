@@ -13,8 +13,29 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  release:
+  check:
     if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    outputs:
+      release: ${{ steps.changed.outputs.release }}
+    steps:
+      - name: Skip if main hasn't changed since the latest release
+        id: changed
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          LAST=$(gh release view --repo "$GITHUB_REPOSITORY" --json targetCommitish -q .targetCommitish 2>/dev/null || true)
+          if [ "$GITHUB_EVENT_NAME" = "schedule" ] && [ "$LAST" = "$GITHUB_SHA" ]; then
+            echo "Latest release already built from $GITHUB_SHA; skipping."
+            echo "release=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "release=true" >> "$GITHUB_OUTPUT"
+          fi
+
+  release:
+    needs: check
+    if: needs.check.outputs.release == 'true'
     runs-on: macos-15
     timeout-minutes: 60
     env:
