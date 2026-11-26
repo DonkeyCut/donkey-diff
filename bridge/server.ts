@@ -24,6 +24,7 @@ import {
 } from "./git.js";
 import type { Project } from "../src/types.js";
 import { ChatService } from "./chat.js";
+import { AutopilotService } from "./autopilot.js";
 const app = express();
 const port = Number(process.env.DONKEY_DIFF_PORT || 43127);
 const dataDir =
@@ -170,6 +171,7 @@ app.use((req, res, next) => {
   next();
 });
 app.use(express.json({ limit: "6mb" }));
+const autopilot = new AutopilotService(dataDir, () => projects);
 const projectFor = (id: string) => {
   const project = projects.find((p) => p.id === id);
   if (!project) throw new Error("Project not found");
@@ -240,8 +242,98 @@ app.post("/projects/:id/chat/stop", async (req, res) => {
   res.json(await chats.stop(project.id, sessionId));
 });
 app.get("/chat-status", (_req, res) =>
-  res.json({ running: chats.hasRunning() }),
+  res.json({ running: chats.hasRunning() || autopilot.isRunning() }),
 );
+app.get("/autopilot", async (_req, res) =>
+  res.json(await autopilot.overviewState()),
+);
+app.get("/projects/:id/autopilot", async (req, res) =>
+  res.json(await autopilot.state(projectFor(req.params.id))),
+);
+const jobId = z.string().uuid();
+app.get("/projects/:id/autopilot/jobs/:job", async (req, res) =>
+  res.json(
+    await autopilot.job(
+      projectFor(req.params.id).id,
+      jobId.parse(req.params.job),
+    ),
+  ),
+);
+app.post("/projects/:id/autopilot/jobs/:job/seen", async (req, res) =>
+  res.json(
+    await autopilot.markSeen(
+      projectFor(req.params.id).id,
+      jobId.parse(req.params.job),
+    ),
+  ),
+);
+app.post("/projects/:id/autopilot/jobs/:job/stop", async (req, res) =>
+  res.json(
+    await autopilot.stop(
+      projectFor(req.params.id).id,
+      jobId.parse(req.params.job),
+    ),
+  ),
+);
+const autopilotConfig = z
+  .object({
+    enabled: z.boolean(),
+    branch: z
+      .string()
+      .trim()
+      .min(1)
+      .max(200)
+      .regex(/^[^-\s][^\s]*$/),
+    dailyCap: z.number().int().min(1).max(100),
+    model: z.string().max(150),
+    posthog: z
+      .object({
+        host: z
+          .string()
+          .trim()
+          .url()
+          .refine((v) => v.startsWith("https://"), "Use an https PostHog host"),
+        projectId: z
+          .string()
+          .trim()
+          .regex(/^[A-Za-z0-9_-]{0,64}$/),
+        apiKey: z.string().trim().max(200),
+      })
+      .partial(),
+  })
+  .partial();
+app.post("/projects/:id/autopilot/config", async (req, res) => {
+  const project = projectFor(req.params.id);
+  const patch = autopilotConfig.parse(req.body);
+  if (patch.branch)
+    await git(project.path, ["check-ref-format", "--branch", patch.branch]);
+  res.json(await autopilot.setConfig(project, patch));
+});
+app.post("/projects/:id/autopilot/run", async (req, res) => {
+  const { kind } = z
+    .object({ kind: z.enum(["review", "ci", "posthog"]) })
+    .parse(req.body);
+  res.json(await autopilot.run(projectFor(req.params.id), kind));
+});
+app.post("/projects/:id/autopilot/teach", async (req, res) => {
+  const input = z
+    .object({
+      text: z.string().trim().min(1).max(2000),
+      jobId: z.string().uuid().optional(),
+    })
+    .parse(req.body);
+  res.json(
+    await autopilot.teach(
+      projectFor(req.params.id).id,
+      input.text,
+      input.jobId,
+    ),
+  );
+});
+app.post("/projects/:id/autopilot/memory", async (req, res) => {
+  const { text } = z.object({ text: z.string().max(50000) }).parse(req.body);
+  res.json(await autopilot.setMemory(projectFor(req.params.id).id, text));
+});
 app.get("/projects", (_req, res) => res.json(projects));
 app.post("/projects", async (req, res) => {
   const { path: input } = z.object({ path: z.string().min(1) }).parse(req.body);
@@ -566,14 +658,21 @@ app.use(
     _next: express.NextFunction,
   ) => res.status(400).json({ error: error.message }),
 );
-app.listen(port, "127.0.0.1", () =>
+app.listen(port, "127.0.0.1", () => {
   console.log(
     `Donkey Diff local bridge listening at http://127.0.0.1:${port}\n${projects.length} repositories available. Pairing key: ${tokenPath}\nAllowed apps: ${[...origins].join(", ")}`,
-  ),
-);
+  );
+  void autopilot
+    .start()
+    .catch((error) =>
+      console.error(`Autopilot could not start: ${(error as Error).message}`),
+    );
+});
 
 for (const signal of ["SIGTERM", "SIGINT"] as const) {
   process.once(signal, () => {
-    void chats.close().finally(() => process.exit(0));
+    void Promise.allSettled([chats.close(), autopilot.close()]).finally(() =>
+      process.exit(0),
+    );
   });
 }

@@ -367,6 +367,70 @@ export function claudeUpdate(message: Record<string, unknown>): AgentUpdate {
   return {};
 }
 
+/** Maps Claude stream-json messages to transcript updates, in arrival order. */
+export function claudeEvents(
+  turnKey: string,
+  find: (id: string) => ChatEntry | undefined,
+) {
+  let part = 0;
+  return (message: Record<string, unknown>): AgentUpdate[] => {
+    if (message.parent_tool_use_id) return [];
+    const updates: AgentUpdate[] = [];
+    const update = claudeUpdate(message);
+    if (update.delta) update.delta.id = `${turnKey}-${part}`;
+    const content = record(message.message).content;
+    if (message.type === "assistant" && Array.isArray(content)) {
+      const texts = content
+        .map(record)
+        .filter((c) => c.type === "text")
+        .map((c) => String(c.text || ""));
+      if (texts.length)
+        update.entry = {
+          id: `${turnKey}-${part}`,
+          kind: "assistant",
+          text: texts.join("\n"),
+        };
+      part++;
+      for (const block of content
+        .map(record)
+        .filter((c) => c.type === "tool_use")) {
+        const input = record(block.input);
+        updates.push({
+          activity: `Using ${block.name}`,
+          entry: {
+            id: String(block.id),
+            kind: "activity",
+            text: String(input.command || input.file_path || block.name),
+            detail: JSON.stringify(block.input, null, 2).slice(0, 16000),
+            status: "running",
+          },
+        });
+      }
+    }
+    if (message.type === "user" && Array.isArray(content)) {
+      for (const block of content
+        .map(record)
+        .filter((c) => c.type === "tool_result")) {
+        const entry = find(String(block.tool_use_id));
+        if (entry)
+          updates.push({
+            activity: "Thinking",
+            entry: {
+              ...entry,
+              status: block.is_error ? "error" : "done",
+              detail: (typeof block.content === "string"
+                ? block.content
+                : JSON.stringify(block.content) || ""
+              ).slice(-16000),
+            },
+          });
+      }
+    }
+    updates.push(update);
+    return updates;
+  };
+}
+
 export async function claudeModels(
   executable: string,
   cwd: string,

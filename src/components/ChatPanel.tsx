@@ -2,13 +2,10 @@ import { useEffect, useRef, useState } from "react";
 import {
   ArrowUp,
   Check,
-  ChevronRight,
   Code2,
-  Loader2,
   Plus,
   RotateCcw,
   Square,
-  Terminal,
   X,
 } from "lucide-react";
 import { ChatModelPicker } from "@/components/ChatModelPicker";
@@ -18,13 +15,8 @@ import {
   ConversationContent,
   ConversationScrollButton,
 } from "@/components/ai-elements/conversation";
-import {
-  Message,
-  MessageContent,
-  MessageResponse,
-} from "@/components/ai-elements/message";
+import { ChatEntries } from "@/components/ChatEntries";
 import type {
-  ChatEntry,
   ChatProvider,
   ChatProviderInfo,
   ChatSession,
@@ -43,24 +35,6 @@ type Props = {
 };
 const emptyState: ChatState = { sessions: [], skills: [] };
 const normalize = (value: string) => value.toLowerCase().replace(/[-_]+/g, " ");
-function Activity({ entry }: { entry: ChatEntry }) {
-  return (
-    <details className="chat-activity">
-      <summary>
-        {entry.status === "running" ? (
-          <Loader2 className="animate-spin" size={14} />
-        ) : entry.status === "error" ? (
-          <X size={14} />
-        ) : (
-          <Terminal size={14} />
-        )}
-        <span>{entry.text}</span>
-        <ChevronRight size={12} />
-      </summary>
-      {entry.detail && <pre>{entry.detail}</pre>}
-    </details>
-  );
-}
 function Elapsed({ session }: { session: ChatSession }) {
   const [now, setNow] = useState(Date.now());
   useEffect(() => {
@@ -294,30 +268,11 @@ export function ChatPanel({
       </header>
       <Conversation className="chat-conversation" key={activeId || "new"}>
         <ConversationContent className="chat-messages">
-          {selected?.entries.map((entry) =>
-            entry.kind === "activity" ? (
-              <Activity key={entry.id} entry={entry} />
-            ) : (
-              <Message key={entry.id} from={entry.kind}>
-                <MessageContent
-                  className={
-                    entry.kind === "user"
-                      ? "chat-user-message"
-                      : "chat-assistant-message"
-                  }
-                >
-                  {entry.kind === "user" ? (
-                    entry.text
-                  ) : (
-                    <MessageResponse
-                      isAnimating={selected.status === "running"}
-                    >
-                      {entry.text}
-                    </MessageResponse>
-                  )}
-                </MessageContent>
-              </Message>
-            ),
+          {selected && (
+            <ChatEntries
+              entries={selected.entries}
+              animating={selected.status === "running"}
+            />
           )}
           {selected?.startedAt && (
             <div className="chat-progress" role="status">

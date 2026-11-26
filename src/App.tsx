@@ -1,4 +1,6 @@
 import {
+  lazy,
+  Suspense,
   useCallback,
   useEffect,
   useRef,
@@ -23,6 +25,7 @@ import {
   Loader2,
   Menu,
   MessageSquare,
+  Bot,
   MoreHorizontal,
   Plus,
   RefreshCw,
@@ -66,6 +69,12 @@ import type {
   Project,
   Snapshot,
 } from "@/types";
+// Loaded on demand to keep the main bundle within its size budget.
+const AutopilotPanel = lazy(() =>
+  import("@/components/AutopilotPanel").then((m) => ({
+    default: m.AutopilotPanel,
+  })),
+);
 type Modal = {
   kind: "connect" | "open" | "action";
   title: string;
@@ -129,6 +138,12 @@ function Section({
 export function App() {
   const [chatOpen, setChatOpen] = useState(false);
   const [chatStarted, setChatStarted] = useState(false);
+  const [autopilotOpen, setAutopilotOpen] = useState(false);
+  const [autopilotFocus, setAutopilotFocus] = useState<{
+    jobId?: string;
+    nonce: number;
+  }>();
+  const [autopilotAttention, setAutopilotAttention] = useState(0);
   const [chatRunning, setChatRunning] = useState(false);
   const [chatWidth, setChatWidth] = useState(
     () => Number(localStorage.getItem("donkey-chat-width")) || 420,
@@ -1181,6 +1196,20 @@ export function App() {
       ),
     [],
   );
+  const openProjectRef = useRef(openProject);
+  useEffect(() => {
+    openProjectRef.current = openProject;
+  });
+  useEffect(
+    () =>
+      window.donkeyDiffDesktop?.onOpenAutopilot?.(({ projectId, jobId }) => {
+        openProjectRef.current(projectId);
+        setChatOpen(false);
+        setAutopilotOpen(true);
+        setAutopilotFocus({ jobId, nonce: Date.now() });
+      }),
+    [],
+  );
   const autoSyncControl = (
     <label className="auto-sync" title={syncText}>
       <Switch.Root
@@ -1898,10 +1927,27 @@ export function App() {
                     onClick={() => {
                       setChatStarted(true);
                       setChatOpen(!chatOpen);
+                      setAutopilotOpen(false);
                     }}
                   >
                     <MessageSquare size={15} />
                     <small>Chat</small>
+                  </button>
+                  <button
+                    className={`tool chat-toggle ${autopilotOpen ? "selected" : ""}`}
+                    aria-label="Autopilot"
+                    aria-expanded={autopilotOpen}
+                    aria-controls="project-autopilot"
+                    onClick={() => {
+                      setAutopilotOpen(!autopilotOpen);
+                      setChatOpen(false);
+                    }}
+                  >
+                    <Bot size={15} />
+                    <small>Autopilot</small>
+                    {autopilotAttention > 0 && (
+                      <i className="tool-badge">{autopilotAttention}</i>
+                    )}
                   </button>
                 </div>
               </header>
@@ -2344,7 +2390,7 @@ export function App() {
                     </WorkspaceLayout>
                   )}
                 </div>
-                {chatOpen && (
+                {(chatOpen || autopilotOpen) && (
                   <div
                     className="chat-resizer"
                     role="separator"
@@ -2403,6 +2449,21 @@ export function App() {
                     }}
                     onRunning={setChatRunning}
                   />
+                )}
+                {connected && active && (
+                  <Suspense fallback={null}>
+                    <AutopilotPanel
+                      key={`autopilot-${active}`}
+                      project={
+                        projects.find((p) => p.id === active) || state.project
+                      }
+                      connected={connected}
+                      open={autopilotOpen}
+                      focus={autopilotFocus}
+                      onClose={() => setAutopilotOpen(false)}
+                      onAttention={setAutopilotAttention}
+                    />
+                  </Suspense>
                 )}
               </div>
             </main>

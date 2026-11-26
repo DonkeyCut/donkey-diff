@@ -14,7 +14,7 @@ import {
   codexModels,
   claudeModels,
   codexUpdate,
-  claudeUpdate,
+  claudeEvents,
   record,
   type AgentUpdate,
 } from "./agent-process.js";
@@ -346,64 +346,13 @@ export class ChatService {
       if (session.effort) args.push("--effort", session.effort);
       const agent = new AgentProcess(executable, args, project.path);
       run.agent = agent;
-      const turnKey = randomUUID();
-      let part = 0;
+      const events = claudeEvents(randomUUID(), (id) =>
+        session.entries.find((e) => e.id === id),
+      );
       agent.onExit = (error) => this.finish(project.id, run, error.message);
       agent.onEvent = (message) => {
-        if (message.parent_tool_use_id) return;
-        const update = claudeUpdate(message);
-        if (update.delta) update.delta.id = `${turnKey}-${part}`;
-        const content = record(message.message).content;
-        if (message.type === "assistant" && Array.isArray(content)) {
-          const texts = content
-            .map(record)
-            .filter((c) => c.type === "text")
-            .map((c) => String(c.text || ""));
-          if (texts.length)
-            update.entry = {
-              id: `${turnKey}-${part}`,
-              kind: "assistant",
-              text: texts.join("\n"),
-            };
-          part++;
-          for (const block of content
-            .map(record)
-            .filter((c) => c.type === "tool_use")) {
-            const input = record(block.input);
-            this.update(project.id, run, {
-              activity: `Using ${block.name}`,
-              entry: {
-                id: String(block.id),
-                kind: "activity",
-                text: String(input.command || input.file_path || block.name),
-                detail: JSON.stringify(block.input, null, 2).slice(0, 16000),
-                status: "running",
-              },
-            });
-          }
-        }
-        if (message.type === "user" && Array.isArray(content)) {
-          for (const block of content
-            .map(record)
-            .filter((c) => c.type === "tool_result")) {
-            const entry = session.entries.find(
-              (e) => e.id === block.tool_use_id,
-            );
-            if (entry)
-              this.update(project.id, run, {
-                activity: "Thinking",
-                entry: {
-                  ...entry,
-                  status: block.is_error ? "error" : "done",
-                  detail: (typeof block.content === "string"
-                    ? block.content
-                    : JSON.stringify(block.content) || ""
-                  ).slice(-16000),
-                },
-              });
-          }
-        }
-        this.update(project.id, run, update);
+        for (const update of events(message))
+          this.update(project.id, run, update);
       };
       agent.child.stdin.end(prompt);
     }

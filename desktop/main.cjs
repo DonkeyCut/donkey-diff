@@ -7,6 +7,9 @@ const {
   utilityProcess,
   Menu,
   clipboard,
+  Tray,
+  Notification,
+  nativeImage,
 } = require("electron");
 const path = require("node:path");
 const { pathToFileURL } = require("node:url");
@@ -32,6 +35,15 @@ let activeMutations = 0;
 let fileRead;
 let manualUpdateCheck = false;
 let showUpdateResult = () => {};
+let tray;
+let autopilot = { running: 0, attention: 0, recent: [] };
+let openWindow = () => {};
+const autopilotStatusLabel = () =>
+  autopilot.attention
+    ? `Autopilot: ${autopilot.attention} need${autopilot.attention === 1 ? "s" : ""} you`
+    : autopilot.running
+      ? "Autopilot: working…"
+      : "Autopilot: idle";
 const { createUpdater } = require("./updater.cjs");
 const updater = createUpdater({
   currentVersion: app.getVersion(),
@@ -56,12 +68,7 @@ const ownedFrame = (event) => {
 };
 if (!app.requestSingleInstanceLock()) app.quit();
 else {
-  app.on("second-instance", () => {
-    if (window) {
-      if (window.isMinimized()) window.restore();
-      window.focus();
-    }
-  });
+  app.on("second-instance", () => openWindow());
   app
     .whenReady()
     .then(async () => {
@@ -102,11 +109,24 @@ else {
           15000,
         );
         let output = "";
+        let listening = false;
         bridgeProcess.stdout.on("data", (chunk) => {
           output += chunk.toString();
-          if (output.includes("listening")) {
-            clearTimeout(timeout);
-            resolve();
+          const lines = output.split("\n");
+          output = lines.pop();
+          for (const line of lines) {
+            // Autopilot reports status and notifications as tagged JSON lines.
+            if (line.startsWith("@@autopilot ")) {
+              try {
+                handleAutopilotEvent(JSON.parse(line.slice(12)));
+              } catch {
+                /* Ignore a malformed event rather than stop the app. */
+              }
+            } else if (!listening && line.includes("listening")) {
+              listening = true;
+              clearTimeout(timeout);
+              resolve();
+            } else if (line) process.stdout.write(line + "\n");
           }
         });
         bridgeProcess.stderr.on("data", (chunk) => process.stderr.write(chunk));
@@ -125,8 +145,10 @@ else {
         ownedFrame(event);
         if (
           typeof route !== "string" ||
-          !/^\/projects(?:\/[a-f0-9]{16}(?:\/(?:files|tree|file|action|navigation|history|chat(?:\/(?:providers|send|stop))?))?)?(?:\?.*)?$/.test(
-            route,
+          !(
+            /^\/projects(?:\/[a-f0-9]{16}(?:\/(?:files|tree|file|action|navigation|history|chat(?:\/(?:providers|send|stop))?|autopilot(?:\/(?:config|run|teach|memory|jobs\/[a-f0-9-]{36}(?:\/(?:seen|stop))?))?))?)?(?:\?.*)?$/.test(
+              route,
+            ) || route === "/autopilot"
           ) ||
           !["GET", "POST", "DELETE"].includes(method)
         )
@@ -219,7 +241,7 @@ else {
         });
         if (activeMutations || chatStatus.running)
           throw new Error(
-            "Wait for the current Git operation or chat to finish before updating.",
+            "Wait for the current Git operation, chat or Autopilot job to finish before updating.",
           );
         void telemetry.capture("update_requested");
         return updater.activate();
@@ -275,6 +297,12 @@ else {
         });
         return result.canceled ? null : result.filePaths[0];
       });
+      ipcMain.handle("login-item", (event, enabled) => {
+        ownedFrame(event);
+        if (typeof enabled === "boolean")
+          app.setLoginItemSettings({ openAtLogin: enabled });
+        return app.getLoginItemSettings().openAtLogin;
+      });
       const createWindow = () => {
         window = new BrowserWindow({
           width: 1440,
@@ -305,7 +333,12 @@ else {
           window.setTitle(environment.name);
         });
         window.webContents.setWindowOpenHandler(({ url }) => {
-          if (url.startsWith("https://github.com/DonkeyCut/donkey-diff"))
+          if (
+            url.startsWith("https://github.com/DonkeyCut/donkey-diff") ||
+            /^https:\/\/github\.com\/[\w.-]+\/[\w.-]+\/actions\/runs\/\d+/.test(
+              url,
+            )
+          )
             shell.openExternal(url);
           return { action: "deny" };
         });
@@ -315,8 +348,29 @@ else {
         window.webContents.session.setPermissionRequestHandler(
           (_webContents, _permission, callback) => callback(false),
         );
+        window.on("closed", () => {
+          window = undefined;
+        });
         window.loadFile(entry);
       };
+      openWindow = (autopilotTarget) => {
+        if (!window || window.isDestroyed()) createWindow();
+        if (window.isMinimized()) window.restore();
+        window.show();
+        window.focus();
+        if (!autopilotTarget) return;
+        const send = () =>
+          window?.webContents.send("open-autopilot", autopilotTarget);
+        if (window.webContents.isLoading())
+          window.webContents.once("did-finish-load", send);
+        else send();
+      };
+      const trayIcon = nativeImage
+        .createFromPath(path.join(__dirname, "assets", environment.icon))
+        .resize({ width: 18, height: 18 });
+      tray = new Tray(trayIcon);
+      tray.setToolTip(environment.name);
+      updateTray();
       Menu.setApplicationMenu(
         Menu.buildFromTemplate([
           {
@@ -375,11 +429,12 @@ else {
           { role: "windowMenu" },
         ]),
       );
-      createWindow();
+      // Opened at login, the app starts quietly in the menu bar.
+      if (!app.getLoginItemSettings().wasOpenedAtLogin) createWindow();
       void telemetry.capture("app_opened");
       updater.start();
       app.on("activate", () => {
-        if (BrowserWindow.getAllWindows().length === 0) createWindow();
+        if (BrowserWindow.getAllWindows().length === 0) openWindow();
       });
     })
     .catch((error) => {
@@ -387,5 +442,79 @@ else {
       app.quit();
     });
   app.on("before-quit", () => bridgeProcess?.kill());
-  app.on("window-all-closed", () => app.quit());
+  // Keep running in the menu bar so Autopilot can work with the window closed.
+  app.on("window-all-closed", () => {});
+}
+
+function updateTray() {
+  if (!tray) return;
+  tray.setTitle(
+    autopilot.attention
+      ? ` ${autopilot.attention}`
+      : autopilot.running
+        ? " …"
+        : "",
+  );
+  const label = {
+    queued: "Queued",
+    running: "Working",
+    pushed: "Pushed",
+    no_changes: "No changes",
+    needs_user: "Needs you",
+    failed: "Failed",
+    stopped: "Stopped",
+    interrupted: "Interrupted",
+    skipped: "Skipped",
+  };
+  tray.setContextMenu(
+    Menu.buildFromTemplate([
+      { label: autopilotStatusLabel(), enabled: false },
+      ...(autopilot.recent.length
+        ? [
+            { type: "separator" },
+            ...autopilot.recent.map((job) => ({
+              label: `${label[job.status] || job.status} · ${job.projectName}: ${job.title}`.slice(
+                0,
+                80,
+              ),
+              click: () =>
+                openWindow({ projectId: job.projectId, jobId: job.jobId }),
+            })),
+          ]
+        : []),
+      { type: "separator" },
+      { label: `Open ${app.getName()}`, click: () => openWindow() },
+      {
+        label: "Open at Login",
+        type: "checkbox",
+        checked: app.getLoginItemSettings().openAtLogin,
+        click: (item) => app.setLoginItemSettings({ openAtLogin: item.checked }),
+      },
+      { type: "separator" },
+      { label: `Quit ${app.getName()}`, role: "quit" },
+    ]),
+  );
+}
+function handleAutopilotEvent(event) {
+  if (event?.type === "status") {
+    autopilot = {
+      running: Number(event.running) || 0,
+      attention: Number(event.attention) || 0,
+      recent: Array.isArray(event.recent) ? event.recent : [],
+    };
+    updateTray();
+  } else if (event?.type === "notify" && Notification.isSupported()) {
+    const notification = new Notification({
+      title: String(event.title || "Autopilot"),
+      body: String(event.body || ""),
+    });
+    notification.on("click", () =>
+      openWindow(
+        event.projectId
+          ? { projectId: event.projectId, jobId: event.jobId }
+          : undefined,
+      ),
+    );
+    notification.show();
+  }
 }

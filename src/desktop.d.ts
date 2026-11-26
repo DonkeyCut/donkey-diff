@@ -21,6 +21,10 @@ declare global {
         action: "open" | "reveal",
       ) => Promise<void>;
       onOpenProject: (callback: () => void) => () => void;
+      loginItem: (enabled?: boolean) => Promise<boolean>;
+      onOpenAutopilot: (
+        callback: (target: { projectId: string; jobId?: string }) => void,
+      ) => () => void;
     };
   }
 }

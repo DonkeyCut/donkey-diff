@@ -15,6 +15,12 @@ contextBridge.exposeInMainWorld("donkeyDiffDesktop", {
   writeClipboardText: (text) => ipcRenderer.invoke("clipboard-write-text", text),
   fileAction: (projectId, path, action) =>
     ipcRenderer.invoke("file-action", projectId, path, action),
+  loginItem: (enabled) => ipcRenderer.invoke("login-item", enabled),
+  onOpenAutopilot: (callback) => {
+    const listener = (_event, target) => callback(target);
+    ipcRenderer.on("open-autopilot", listener);
+    return () => ipcRenderer.removeListener("open-autopilot", listener);
+  },
   onOpenProject: (callback) => {
     const listener = () => callback();
     ipcRenderer.on("open-project", listener);

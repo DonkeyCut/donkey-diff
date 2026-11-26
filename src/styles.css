@@ -2969,3 +2969,301 @@ button svg {
 .tab-dragging .project-tab:not(.active)::after {
   opacity: 0;
 }
+
+/* Autopilot — background jobs panel, shares the chat panel's slot. */
+.chat-toggle {
+  position: relative;
+}
+.autopilot-header {
+  justify-content: space-between;
+  align-items: center;
+}
+.autopilot-header h2 {
+  font-size: 12px;
+  font-weight: 600;
+  color: #ddd;
+}
+.autopilot-header button.selected {
+  background: #404040;
+  color: #fff;
+}
+.autopilot-messages {
+  padding: 0 16px;
+}
+.autopilot-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 8px 16px 16px;
+  font-size: 12px;
+}
+.autopilot-loading {
+  display: grid;
+  place-items: center;
+  color: #888;
+}
+.autopilot-off {
+  background: #232323;
+  border: 1px solid #333;
+  border-radius: 10px;
+  padding: 12px;
+  margin-bottom: 14px;
+  line-height: 1.65;
+  color: #bbb;
+}
+.autopilot-off p {
+  margin-bottom: 10px;
+}
+.autopilot-body code,
+.autopilot-hint code {
+  background: #2c2c2c;
+  border-radius: 4px;
+  padding: 1px 4px;
+  font-size: 11px;
+}
+.autopilot-primary,
+.autopilot-secondary {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border-radius: 999px;
+  padding: 6px 12px;
+  font-size: 11px;
+}
+.autopilot-primary {
+  background: #f4f4f4;
+  color: #171717;
+}
+.autopilot-secondary {
+  border: 1px solid #444;
+  color: #ddd;
+}
+.autopilot-primary:disabled,
+.autopilot-secondary:disabled {
+  opacity: 0.4;
+}
+.autopilot-integrations {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.autopilot-integrations li {
+  display: flex;
+  gap: 8px;
+  color: #999;
+  font-size: 11px;
+  line-height: 1.5;
+}
+.autopilot-integrations li > svg {
+  margin-top: 3px;
+  flex-shrink: 0;
+  color: #d2a85d;
+}
+.autopilot-integrations li.ok > svg {
+  color: #72bd80;
+}
+.autopilot-integrations strong {
+  display: block;
+  color: #ddd;
+  font-weight: 500;
+}
+.autopilot-run {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin-bottom: 12px;
+}
+.autopilot-run button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid #3c3c3c;
+  border-radius: 999px;
+  padding: 6px 10px;
+  font-size: 11px;
+  color: #c4c4c4;
+  background: #252525;
+}
+.autopilot-run button:not(:disabled):hover {
+  background: #343434;
+  color: #eee;
+}
+.autopilot-run button:disabled {
+  opacity: 0.5;
+}
+.autopilot-digest {
+  color: #8b8b8b;
+  font-size: 11px;
+  margin-bottom: 10px;
+}
+.autopilot-jobs {
+  display: grid;
+  gap: 2px;
+}
+.autopilot-job {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  text-align: left;
+  padding: 9px 8px;
+  border-radius: 8px;
+  color: #aaa;
+}
+.autopilot-job:hover {
+  background: #262626;
+}
+.autopilot-job.unseen {
+  background: #2d2620;
+}
+.autopilot-job-text {
+  flex: 1;
+  min-width: 0;
+}
+.autopilot-job-text strong,
+.autopilot-job-text small {
+  display: block;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.autopilot-job-text strong {
+  color: #e2e2e2;
+  font-weight: 500;
+}
+.autopilot-job-text small {
+  color: #858585;
+  font-size: 10px;
+}
+.autopilot-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex-shrink: 0;
+  font-size: 10px;
+  color: #999;
+}
+.autopilot-status.pushed {
+  color: #72bd80;
+}
+.autopilot-status.needs_user,
+.autopilot-status.interrupted {
+  color: #d2a85d;
+}
+.autopilot-status.failed {
+  color: #e18a87;
+}
+.autopilot-status.running {
+  color: #ddd;
+}
+.autopilot-empty {
+  color: #888;
+  padding: 16px 0;
+}
+.autopilot-detail {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+.autopilot-job-head {
+  display: grid;
+  gap: 6px;
+  justify-items: start;
+  padding: 4px 20px 12px;
+  border-bottom: 1px solid #2c2c2c;
+  font-size: 12px;
+  line-height: 1.6;
+}
+.autopilot-job-head h3 {
+  font-size: 13px;
+  font-weight: 600;
+  color: #eee;
+}
+.autopilot-job-head small {
+  color: #858585;
+}
+.autopilot-job-head a {
+  color: #a7c7ff;
+  text-decoration: underline;
+  font-size: 11px;
+}
+.autopilot-error {
+  color: #edb3b3;
+}
+.autopilot-commits code {
+  margin-left: 4px;
+  font-size: 11px;
+}
+.autopilot-teach {
+  margin: 0 16px 16px;
+}
+.autopilot-teach textarea {
+  min-height: 36px;
+}
+.autopilot-teach small {
+  color: #888;
+  font-size: 10px;
+}
+.autopilot-settings {
+  display: grid;
+  gap: 12px;
+}
+.autopilot-settings h3 {
+  margin-top: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #ccc;
+}
+.autopilot-settings label {
+  display: grid;
+  gap: 5px;
+  color: #999;
+  font-size: 11px;
+}
+.autopilot-settings input:not([type="checkbox"]),
+.autopilot-settings textarea {
+  width: 100%;
+  background: #262626;
+  border: 1px solid #3a3a3a;
+  border-radius: 7px;
+  padding: 7px 9px;
+  color: #e6e6e6;
+  font-size: 12px;
+}
+.autopilot-settings textarea {
+  font-family: inherit;
+  line-height: 1.6;
+  resize: vertical;
+}
+.autopilot-fields {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+.autopilot-settings .autopilot-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+}
+.autopilot-check input {
+  margin-top: 3px;
+}
+.autopilot-check strong {
+  display: block;
+  color: #e2e2e2;
+  font-weight: 500;
+  font-size: 12px;
+}
+.autopilot-check small {
+  display: block;
+  line-height: 1.5;
+}
+.autopilot-hint {
+  color: #858585;
+  font-size: 10px;
+  margin-top: -6px;
+}
+.autopilot-settings > .autopilot-primary {
+  justify-self: start;
+}
