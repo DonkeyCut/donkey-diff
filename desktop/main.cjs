@@ -365,9 +365,12 @@ else {
           window.webContents.once("did-finish-load", send);
         else send();
       };
-      const trayIcon = nativeImage
-        .createFromPath(path.join(__dirname, "assets", environment.icon))
-        .resize({ width: 18, height: 18 });
+      // A template image: macOS tints the glyph to match the menu bar, like
+      // its own icons. The @2x file beside it is picked up automatically.
+      const trayIcon = nativeImage.createFromPath(
+        path.join(__dirname, "assets", "trayTemplate.png"),
+      );
+      trayIcon.setTemplateImage(true);
       tray = new Tray(trayIcon);
       tray.setToolTip(environment.name);
       updateTray();
