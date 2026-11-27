@@ -253,14 +253,85 @@ test("CI failures get at most two fix attempts per human commit", async () => {
   }
 });
 
+test("the newest run of each deploy workflow is shown", async () => {
+  const f = await fixture();
+  try {
+    const autopilot = service(f, {
+      gh: async (_cwd, args) => {
+        if (args[0] === "auth") return "";
+        // Newest first, as gh lists them; "CI" is not a deploy.
+        return JSON.stringify([
+          {
+            databaseId: 3,
+            headSha: "c3",
+            status: "in_progress",
+            conclusion: "",
+            workflowName: "Deploy Site",
+            url: "https://example.test/3",
+            createdAt: "2026-11-27T06:49:30Z",
+          },
+          {
+            databaseId: 2,
+            headSha: "c2",
+            status: "completed",
+            conclusion: "success",
+            workflowName: "CI",
+            createdAt: "2026-11-27T06:03:01Z",
+          },
+          {
+            databaseId: 1,
+            headSha: "c1",
+            status: "completed",
+            conclusion: "failure",
+            workflowName: "Deploy Site",
+            createdAt: "2026-11-27T05:00:00Z",
+          },
+          {
+            databaseId: 0,
+            headSha: "c1",
+            status: "completed",
+            conclusion: "success",
+            workflowName: "Release App",
+            url: "https://example.test/0",
+            createdAt: "2026-11-27T05:00:00Z",
+          },
+        ]);
+      },
+    });
+    await autopilot.check(f.project, { push: false });
+    assert.deepEqual((await autopilot.state(f.project)).deploys, [
+      {
+        workflow: "Deploy Site",
+        status: "in_progress",
+        conclusion: "",
+        url: "https://example.test/3",
+        sha: "c3",
+        at: Date.parse("2026-11-27T06:49:30Z"),
+      },
+      {
+        workflow: "Release App",
+        status: "completed",
+        conclusion: "success",
+        url: "https://example.test/0",
+        sha: "c1",
+        at: Date.parse("2026-11-27T05:00:00Z"),
+      },
+    ]);
+    await autopilot.close();
+  } finally {
+    await rm(f.root, { recursive: true, force: true });
+  }
+});
+
 test("missing gh is reported instead of failing", async () => {
   const f = await fixture();
   try {
     const autopilot = service(f);
-    const result = await autopilot.run(f.project, "ci");
-    assert.match(result.message, /Install the GitHub CLI/);
+    await autopilot.check(f.project, { push: false });
     const state = await autopilot.state(f.project);
     assert.equal(state.integrations.gh.ok, false);
+    assert.match(state.integrations.gh.message, /Install the GitHub CLI/);
+    assert.deepEqual(state.deploys, []);
     await autopilot.close();
   } finally {
     await rm(f.root, { recursive: true, force: true });
@@ -311,7 +382,7 @@ test("PostHog issues are baselined, deduplicated and include the stack trace", a
     await autopilot.setConfig(f.project, {
       posthog: { projectId: "42", apiKey: "phx_key" },
     });
-    await autopilot.run(f.project, "posthog");
+    await autopilot.check(f.project, { push: false, ci: false, posthog: true });
     assert.equal((await autopilot.state(f.project)).jobs.length, 0);
     assert.equal(
       requests[0].url,
@@ -330,8 +401,8 @@ test("PostHog issues are baselined, deduplicated and include the stack trace", a
         '["x is undefined"]',
       ],
     ];
-    await autopilot.run(f.project, "posthog");
-    await autopilot.run(f.project, "posthog");
+    await autopilot.check(f.project, { push: false, ci: false, posthog: true });
+    await autopilot.check(f.project, { push: false, ci: false, posthog: true });
     await autopilot.idle();
     const jobs = (await autopilot.state(f.project)).jobs;
     assert.equal(jobs.length, 1);
@@ -341,7 +412,7 @@ test("PostHog issues are baselined, deduplicated and include the stack trace", a
     // A known issue only comes back when it spikes well after the attempt.
     now += 7 * 3600_000;
     rows = [["new", 40, 30, list, "", "", ""]];
-    await autopilot.run(f.project, "posthog");
+    await autopilot.check(f.project, { push: false, ci: false, posthog: true });
     await autopilot.idle();
     assert.equal((await autopilot.state(f.project)).jobs.length, 2);
     await autopilot.close();

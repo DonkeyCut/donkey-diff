@@ -309,12 +309,6 @@ app.post("/projects/:id/autopilot/config", async (req, res) => {
     await git(project.path, ["check-ref-format", "--branch", patch.branch]);
   res.json(await autopilot.setConfig(project, patch));
 });
-app.post("/projects/:id/autopilot/run", async (req, res) => {
-  const { kind } = z
-    .object({ kind: z.enum(["review", "ci", "posthog"]) })
-    .parse(req.body);
-  res.json(await autopilot.run(projectFor(req.params.id), kind));
-});
 app.post("/projects/:id/autopilot/teach", async (req, res) => {
   const input = z
     .object({

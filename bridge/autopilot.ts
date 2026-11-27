@@ -15,10 +15,10 @@ import type { ChatEntry } from "../src/chat-types.js";
 import type {
   AutopilotConfig,
   AutopilotConfigPatch,
+  AutopilotDeploy,
   AutopilotDigest,
   AutopilotIntegration,
   AutopilotJob,
-  AutopilotKind,
   AutopilotOverview,
   AutopilotPublicConfig,
   AutopilotState,
@@ -39,6 +39,8 @@ const HOUR = 60 * MINUTE;
 const DAY = 24 * HOUR;
 export const TRAILER = "Autopilot-Job";
 const FAILED = new Set(["failure", "timed_out", "startup_failure"]);
+/** Workflows shown as deploys in the panel. */
+const DEPLOY = /deploy|release|publish/i;
 const ATTENTION = new Set(["needs_user", "failed"]);
 const MAX_CI_ATTEMPTS = 2;
 const MAX_POSTHOG_ATTEMPTS = 2;
@@ -252,6 +254,7 @@ export class AutopilotService {
   private closed = false;
   private ghState?: { at: number; value: AutopilotIntegration };
   private posthogState = new Map<string, AutopilotIntegration>();
+  private deploys = new Map<string, AutopilotDeploy[]>();
   private checkedAt = new Map<string, number>();
   private lastDigestAt = 0;
   private overview = "";
@@ -402,6 +405,7 @@ export class AutopilotService {
               : "Add a PostHog project ID and personal API key to watch errors.",
         },
       },
+      deploys: this.deploys.get(project.id) || [],
       checkedAt: this.checkedAt.get(project.id),
     };
   }
@@ -476,29 +480,7 @@ export class AutopilotService {
     } else if (this.active?.job.id === jobId) this.active.abort.abort();
     return { ok: true };
   }
-  /** Run now: checks one trigger immediately, even while Autopilot is off. */
-  async run(project: Project, kind: AutopilotKind) {
-    const before = (await this.load(project.id)).jobs.length;
-    if (kind === "review") await this.reviewLatest(project);
-    else
-      await this.check(project, {
-        push: false,
-        ci: kind === "ci",
-        posthog: kind === "posthog",
-      });
-    const added = (await this.load(project.id)).jobs.length - before;
-    return {
-      message: added
-        ? `Queued ${plural(added, "job")}`
-        : kind === "ci"
-          ? this.ghState?.value.ok === false
-            ? this.ghState.value.message
-            : "No failed CI runs on the latest commit"
-          : kind === "posthog"
-            ? this.posthogState.get(project.id)?.message || "No new errors"
-            : "Nothing to review",
-    };
-  }
+
   isRunning() {
     return !!this.active;
   }
@@ -688,34 +670,13 @@ export class AutopilotService {
     }
     cursor.mainSha = head;
   }
-  private async reviewLatest(project: Project) {
-    const stored = await this.load(project.id);
-    const head = await this.remoteHead(project, stored);
-    if (!head) return;
-    await git(project.path, [
-      "fetch",
-      "--quiet",
-      "origin",
-      stored.config.branch,
-    ]);
-    const latest = (await this.commits(project.path, ["-n", "20", head])).find(
-      (c) => !isAutopilotCommit(c.body),
-    );
-    if (!latest || !this.underCap(project, stored)) return;
-    await this.enqueue(project, {
-      kind: "review",
-      title: "Review latest commit",
-      trigger: "Run now",
-      meta: { to: latest.sha, shas: [latest.sha] },
-    });
-  }
   private async ghStatus(cwd: string) {
     if (this.ghState && this.now() - this.ghState.at < 5 * MINUTE)
       return this.ghState.value;
     let value: AutopilotIntegration;
     try {
       await this.gh(cwd, ["auth", "status"]);
-      value = { ok: true, message: "Watching GitHub Actions" };
+      value = { ok: true, message: "Watching" };
     } catch (error) {
       const message = (error as Error).message;
       value = {
@@ -751,6 +712,21 @@ export class AutopilotService {
       };
       return;
     }
+    // gh lists newest first, so the first run of each deploy workflow is its latest.
+    const deploys = new Map<string, AutopilotDeploy>();
+    for (const run of runs) {
+      const workflow = String(run.workflowName);
+      if (!DEPLOY.test(workflow) || deploys.has(workflow)) continue;
+      deploys.set(workflow, {
+        workflow,
+        status: String(run.status || ""),
+        conclusion: String(run.conclusion || ""),
+        url: String(run.url || ""),
+        sha: String(run.headSha || ""),
+        at: Date.parse(String(run.createdAt)) || 0,
+      });
+    }
+    this.deploys.set(project.id, [...deploys.values()]);
     // Newest run per workflow; an older failure fixed by a rerun is not a failure.
     const latest = new Map<string, Record<string, unknown>>();
     for (const run of runs.filter((r) => r.headSha === head))
@@ -910,7 +886,7 @@ export class AutopilotService {
     );
     this.posthogState.set(project.id, {
       ok: true,
-      message: `Watching ${plural(rows.length, "active issue")}`,
+      message: plural(rows.length, "active issue"),
     });
   }
   private async maybeDigest() {

@@ -65,6 +65,17 @@ export type AutopilotDigest = {
   commits: number;
 };
 export type AutopilotIntegration = { ok: boolean; message: string };
+/** The newest run of a deploy or release workflow on the watched branch. */
+export type AutopilotDeploy = {
+  workflow: string;
+  /** GitHub's run status: queued, in_progress, completed, … */
+  status: string;
+  /** Set once completed: success, failure, cancelled, … */
+  conclusion: string;
+  url: string;
+  sha: string;
+  at: number;
+};
 export type AutopilotState = {
   config: AutopilotPublicConfig;
   jobs: AutopilotJobSummary[];
@@ -72,6 +83,7 @@ export type AutopilotState = {
   digest: AutopilotDigest;
   usedToday: number;
   integrations: { gh: AutopilotIntegration; posthog: AutopilotIntegration };
+  deploys: AutopilotDeploy[];
   checkedAt?: number;
 };
 export type AutopilotOverview = {

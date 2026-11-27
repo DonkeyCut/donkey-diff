@@ -7,7 +7,6 @@ import {
   CircleDashed,
   GitCommit,
   Loader2,
-  Play,
   Settings as SettingsIcon,
   Square,
   Workflow,
@@ -21,6 +20,7 @@ import {
   ConversationScrollButton,
 } from "@/components/ai-elements/conversation";
 import type {
+  AutopilotDeploy,
   AutopilotJob,
   AutopilotJobStatus,
   AutopilotJobSummary,
@@ -61,6 +61,23 @@ function ago(time?: number) {
   if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
   if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`;
   return new Date(time).toLocaleDateString();
+}
+function deployLabel({ status, conclusion }: AutopilotDeploy) {
+  if (status === "queued" || status === "waiting" || status === "pending")
+    return "Queued";
+  if (status !== "completed") return "Deploying";
+  if (conclusion === "success") return "Deployed";
+  if (conclusion === "cancelled" || conclusion === "skipped")
+    return conclusion === "cancelled" ? "Cancelled" : "Skipped";
+  return "Failed";
+}
+function DeployIcon({ deploy }: { deploy: AutopilotDeploy }) {
+  const label = deployLabel(deploy);
+  if (label === "Deploying" || label === "Queued")
+    return <Loader2 className="animate-spin running" size={13} />;
+  if (label === "Deployed") return <Check className="ok" size={13} />;
+  if (label === "Failed") return <X className="failed" size={13} />;
+  return <CircleDashed size={13} />;
 }
 function StatusIcon({ status }: { status: AutopilotJobStatus }) {
   if (status === "running")
@@ -363,8 +380,6 @@ export function AutopilotPanel({
       setBusy(null);
     }
   };
-  const run = (kind: AutopilotKind) =>
-    act(kind, async () => (await autopilot.run(project.id, kind)).message);
   const d = state?.digest;
   return (
     <aside
@@ -571,43 +586,35 @@ export function AutopilotPanel({
             </div>
           )}
           <ul className="autopilot-integrations">
-            <li className={state.integrations.gh.ok ? "ok" : ""}>
-              <Workflow size={13} />
-              <span>
-                <strong>GitHub Actions</strong>
-                {state.integrations.gh.message}
-              </span>
-            </li>
-            <li className={state.integrations.posthog.ok ? "ok" : ""}>
-              <Bug size={13} />
-              <span>
-                <strong>PostHog</strong>
-                {state.integrations.posthog.message}
-              </span>
-            </li>
-          </ul>
-          <div className="autopilot-run">
             {(
               [
-                ["review", "Review latest"],
-                ["ci", "Check CI"],
-                ["posthog", "Check PostHog"],
+                ["GitHub Actions", Workflow, state.integrations.gh],
+                ["PostHog", Bug, state.integrations.posthog],
               ] as const
-            ).map(([kind, label]) => (
-              <button
-                key={kind}
-                disabled={!!busy}
-                onClick={() => void run(kind)}
-              >
-                {busy === kind ? (
-                  <Loader2 className="animate-spin" size={12} />
-                ) : (
-                  <Play size={12} />
-                )}
-                {label}
-              </button>
+            ).map(([name, Icon, integration]) => (
+              <li key={name} className={integration.ok ? "ok" : ""}>
+                <Icon size={13} />
+                <strong>{name}</strong>
+                <span>{integration.message}</span>
+              </li>
             ))}
-          </div>
+          </ul>
+          {state.deploys.length > 0 && (
+            <ul className="autopilot-deploys">
+              {state.deploys.map((deploy) => (
+                <li key={deploy.workflow}>
+                  <DeployIcon deploy={deploy} />
+                  <a href={deploy.url} target="_blank" rel="noreferrer">
+                    {deploy.workflow}
+                  </a>
+                  <span>
+                    {deployLabel(deploy)} · {deploy.sha.slice(0, 7)} ·{" "}
+                    {ago(deploy.at)}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
           {d && (
             <p className="autopilot-digest">
               Last 24 hours: {d.total} job{d.total === 1 ? "" : "s"}

@@ -2,7 +2,6 @@ import { request } from "@/api-clients/bridge";
 import type {
   AutopilotConfigPatch,
   AutopilotJob,
-  AutopilotKind,
   AutopilotOverview,
   AutopilotState,
 } from "@/autopilot-types";
@@ -19,8 +18,6 @@ export const autopilot = {
     request<{ ok: boolean }>(route(projectId, `/jobs/${jobId}/stop`), "POST"),
   config: (projectId: string, patch: AutopilotConfigPatch) =>
     request<AutopilotState>(route(projectId, "/config"), "POST", patch),
-  run: (projectId: string, kind: AutopilotKind) =>
-    request<{ message: string }>(route(projectId, "/run"), "POST", { kind }),
   teach: (projectId: string, text: string, jobId?: string) =>
     request<{ memory: string }>(route(projectId, "/teach"), "POST", {
       text,

@@ -3043,19 +3043,20 @@ button svg {
   opacity: 0.4;
 }
 .autopilot-integrations {
-  display: grid;
-  gap: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 18px;
   margin-bottom: 12px;
 }
 .autopilot-integrations li {
   display: flex;
-  gap: 8px;
+  align-items: center;
+  gap: 6px;
   color: #999;
   font-size: 11px;
   line-height: 1.5;
 }
 .autopilot-integrations li > svg {
-  margin-top: 3px;
   flex-shrink: 0;
   color: #d2a85d;
 }
@@ -3063,33 +3064,48 @@ button svg {
   color: #72bd80;
 }
 .autopilot-integrations strong {
-  display: block;
   color: #ddd;
   font-weight: 500;
 }
-.autopilot-run {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 7px;
+.autopilot-deploys {
+  display: grid;
+  gap: 6px;
   margin-bottom: 12px;
 }
-.autopilot-run button {
-  display: inline-flex;
+.autopilot-deploys li {
+  display: flex;
   align-items: center;
   gap: 6px;
-  border: 1px solid #3c3c3c;
-  border-radius: 999px;
-  padding: 6px 10px;
+  min-width: 0;
+  color: #999;
   font-size: 11px;
-  color: #c4c4c4;
-  background: #252525;
+  line-height: 1.5;
 }
-.autopilot-run button:not(:disabled):hover {
-  background: #343434;
-  color: #eee;
+.autopilot-deploys li > svg {
+  flex-shrink: 0;
+  color: #999;
 }
-.autopilot-run button:disabled {
-  opacity: 0.5;
+.autopilot-deploys li > svg.ok {
+  color: #72bd80;
+}
+.autopilot-deploys li > svg.failed {
+  color: #e18a87;
+}
+.autopilot-deploys li > svg.running {
+  color: #d2a85d;
+}
+.autopilot-deploys a {
+  color: #ddd;
+  font-weight: 500;
+  text-decoration: none;
+}
+.autopilot-deploys a:hover {
+  text-decoration: underline;
+}
+.autopilot-deploys span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .autopilot-digest {
   color: #8b8b8b;
