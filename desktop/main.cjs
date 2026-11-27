@@ -10,6 +10,7 @@ const {
   Tray,
   Notification,
   nativeImage,
+  nativeTheme,
 } = require("electron");
 const path = require("node:path");
 const { pathToFileURL } = require("node:url");
@@ -365,14 +366,8 @@ else {
           window.webContents.once("did-finish-load", send);
         else send();
       };
-      // A template image: macOS tints the glyph to match the menu bar, like
-      // its own icons. The @2x file beside it is picked up automatically.
-      const trayIcon = nativeImage.createFromPath(
-        path.join(__dirname, "assets", "trayTemplate.png"),
-      );
-      trayIcon.setTemplateImage(true);
-      tray = new Tray(trayIcon);
-      tray.setToolTip(environment.name);
+      tray = new Tray(trayImage());
+      nativeTheme.on("updated", updateTray);
       updateTray();
       Menu.setApplicationMenu(
         Menu.buildFromTemplate([
@@ -449,15 +444,33 @@ else {
   app.on("window-all-closed", () => {});
 }
 
+// Idle is a template image, which macOS tints to match the menu bar like its
+// own icons. Working (green) and needs-you (orange) color the glyph's circles,
+// and colored images are not tinted, so those pick white or black lines from
+// the system appearance. Each @2x file beside its PNG is picked up automatically.
+function trayImage() {
+  const state = autopilot.attention
+    ? "attention"
+    : autopilot.running
+      ? "working"
+      : "";
+  if (!state) {
+    const image = nativeImage.createFromPath(
+      path.join(__dirname, "assets", "trayTemplate.png"),
+    );
+    image.setTemplateImage(true);
+    return image;
+  }
+  const appearance = nativeTheme.shouldUseDarkColors ? "dark" : "light";
+  return nativeImage.createFromPath(
+    path.join(__dirname, "assets", `tray-${state}-${appearance}.png`),
+  );
+}
+
 function updateTray() {
   if (!tray) return;
-  tray.setTitle(
-    autopilot.attention
-      ? ` ${autopilot.attention}`
-      : autopilot.running
-        ? " …"
-        : "",
-  );
+  tray.setImage(trayImage());
+  tray.setToolTip(`${environment.name} · ${autopilotStatusLabel()}`);
   const label = {
     queued: "Queued",
     running: "Working",
