@@ -39,6 +39,9 @@ const HOUR = 60 * MINUTE;
 const DAY = 24 * HOUR;
 export const TRAILER = "Autopilot-Job";
 const FAILED = new Set(["failure", "timed_out", "startup_failure"]);
+/** GitHub reports a job stopped by its time limit as cancelled; only this
+ * annotation tells it apart from a cancel someone chose. */
+const TIME_LIMIT = /exceeded the maximum execution time/;
 /** Workflows shown as deploys in the panel. */
 const DEPLOY = /deploy|release|publish/i;
 const ATTENTION = new Set(["needs_user", "failed"]);
@@ -103,6 +106,8 @@ export type PosthogRow = {
   details: string;
 };
 class NeedsUser extends Error {}
+/** A newer commit on the branch already changed what the fix changes. */
+class Superseded extends Error {}
 
 export const defaultConfig = (): AutopilotConfig => ({
   enabled: false,
@@ -255,6 +260,8 @@ export class AutopilotService {
   private ghState?: { at: number; value: AutopilotIntegration };
   private posthogState = new Map<string, AutopilotIntegration>();
   private deploys = new Map<string, AutopilotDeploy[]>();
+  /** The step a cancelled run hit its time limit in, or null, by run id. */
+  private stalled = new Map<number, string | null>();
   private checkedAt = new Map<string, number>();
   private lastDigestAt = 0;
   private overview = "";
@@ -732,9 +739,17 @@ export class AutopilotService {
     for (const run of runs.filter((r) => r.headSha === head))
       if (!latest.has(String(run.workflowName)))
         latest.set(String(run.workflowName), run);
-    const failures = [...latest.values()].filter(
-      (r) => r.status === "completed" && FAILED.has(String(r.conclusion)),
-    );
+    const failures: Record<string, unknown>[] = [];
+    for (const run of latest.values()) {
+      if (run.status !== "completed") continue;
+      const conclusion = String(run.conclusion);
+      if (FAILED.has(conclusion)) failures.push(run);
+      else if (
+        conclusion === "cancelled" &&
+        (await this.stalledStep(project.path, Number(run.databaseId)))
+      )
+        failures.push(run);
+    }
     if (!failures.length) return;
     // Count attempts against the last human commit so fix-of-a-fix still counts.
     const base =
@@ -773,9 +788,44 @@ export class AutopilotService {
           headSha: head,
           url: String(run.url || ""),
           ciKey: key,
+          stalledStep: this.stalled.get(runId) ?? undefined,
         },
       });
     }
+  }
+  /** The step a cancelled run was in when its job hit the time limit, or
+   * null when someone cancelled it. A lookup that fails is retried next poll. */
+  private async stalledStep(cwd: string, runId: number) {
+    if (this.stalled.has(runId)) return this.stalled.get(runId)!;
+    let step: string | null = null;
+    try {
+      const { jobs } = JSON.parse(
+        await this.gh(cwd, ["run", "view", String(runId), "--json", "jobs"]),
+      ) as {
+        jobs: {
+          databaseId: number;
+          conclusion: string;
+          steps?: { name: string; conclusion: string }[];
+        }[];
+      };
+      for (const job of jobs) {
+        if (job.conclusion !== "cancelled") continue;
+        const notes = JSON.parse(
+          await this.gh(cwd, [
+            "api",
+            `repos/{owner}/{repo}/check-runs/${job.databaseId}/annotations`,
+          ]),
+        ) as { message?: string }[];
+        if (!notes.some((n) => TIME_LIMIT.test(n.message || ""))) continue;
+        step =
+          job.steps?.find((s) => s.conclusion === "cancelled")?.name || "";
+        break;
+      }
+    } catch {
+      return null;
+    }
+    this.stalled.set(runId, step);
+    return step;
   }
   private async posthogRows(config: AutopilotConfig): Promise<PosthogRow[]> {
     const { host, projectId, apiKey } = config.posthog;
@@ -1050,6 +1100,8 @@ export class AutopilotService {
       }
     } catch (error) {
       if (abort.signal.aborted) await finish("stopped");
+      else if (error instanceof Superseded)
+        await finish("skipped", { summary: error.message });
       else
         await finish(error instanceof NeedsUser ? "needs_user" : "failed", {
           error: (error as Error).message,
@@ -1139,6 +1191,12 @@ export class AutopilotService {
         await git(cwd, ["rebase", `origin/${branch}`]);
       } catch {
         await git(cwd, ["rebase", "--abort"]).catch(() => undefined);
+        // A CI fix that collides with newer commits is theirs to settle: the
+        // next poll checks their CI and opens a fresh job if it still fails.
+        if (job.kind === "ci")
+          throw new Superseded(
+            `Newer commits on ${branch} changed the same lines, so this fix was dropped; their CI is checked next.`,
+          );
         throw new NeedsUser(
           `Newer commits on ${branch} conflict with this fix, so it was not pushed.`,
         );
@@ -1194,15 +1252,14 @@ Look for correctness bugs, regressions, security problems and broken project rul
       }${taught}`;
     }
     if (job.kind === "ci") {
-      const log = await this.gh(cwd, [
-        "run",
-        "view",
-        String(meta.runId),
-        "--log-failed",
-      ]).catch(
+      const log = await this.ciLog(cwd, meta).catch(
         (error) => `Could not load the log: ${(error as Error).message}`,
       );
-      return `The GitHub Actions workflow "${meta.workflow}" failed on ${stored.config.branch} at ${meta.headSha} (run ${meta.url || meta.runId}).
+      const how =
+        meta.stalledStep !== undefined
+          ? `hit its time limit${meta.stalledStep ? ` during "${meta.stalledStep}"` : ""} and was cancelled`
+          : "failed";
+      return `The GitHub Actions workflow "${meta.workflow}" ${how} on ${stored.config.branch} at ${meta.headSha} (run ${meta.url || meta.runId}).
 Failed job log (end only):
 <ci_log>
 ${log.slice(-30000)}
@@ -1215,6 +1272,23 @@ Issue: ${job.title.replace(/^Fix /, "")} (${meta.issue})
 ${meta.details || "No stack trace was captured."}
 </stack_trace>
 Find the cause in this repository and fix it so the error stops. If it doesn't come from this repository's code, or can't be fixed safely without more information, report needs_user and explain what you found.${taught}`;
+  }
+  /** The failed steps' log; for a run stopped by its time limit, which GitHub
+   * does not count as failed, the log of the step it stopped in. */
+  private async ciLog(cwd: string, meta: AutopilotJob["meta"]) {
+    if (meta.stalledStep === undefined)
+      return this.gh(cwd, ["run", "view", String(meta.runId), "--log-failed"]);
+    const log = await this.gh(cwd, [
+      "run",
+      "view",
+      String(meta.runId),
+      "--log",
+    ]);
+    if (!meta.stalledStep) return log;
+    return log
+      .split("\n")
+      .filter((line) => line.split("\t")[1] === meta.stalledStep)
+      .join("\n");
   }
   async close() {
     this.closed = true;

@@ -49,6 +49,8 @@ export type AutopilotJob = {
     headSha?: string;
     url?: string;
     ciKey?: string;
+    /** Set when a cancelled run hit its time limit: the step it stopped in. */
+    stalledStep?: string;
     issue?: string;
     details?: string;
   };

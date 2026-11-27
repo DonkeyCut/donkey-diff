@@ -253,6 +253,84 @@ test("CI failures get at most two fix attempts per human commit", async () => {
   }
 });
 
+test("a run stopped by its time limit is a failure; other cancels are not", async () => {
+  const f = await fixture();
+  try {
+    let prompt = "";
+    const autopilot = service(f, {
+      runAgent: async (input) => {
+        prompt = input.prompt;
+        await quietAgent(input);
+      },
+      gh: async (_cwd, args) => {
+        if (args[0] === "auth") return "";
+        const head = await git(f.origin, "rev-parse", "main");
+        if (args[0] === "run" && args[1] === "list")
+          return JSON.stringify([
+            { databaseId: 7, headSha: head, status: "completed", conclusion: "cancelled", workflowName: "Deploy" },
+            { databaseId: 8, headSha: head, status: "completed", conclusion: "cancelled", workflowName: "CI" },
+          ]);
+        if (args[1] === "view" && args.includes("--json"))
+          return JSON.stringify({
+            jobs: [{ databaseId: Number(args[2]) * 10, conclusion: "cancelled", steps: [{ name: "Test", conclusion: "cancelled" }] }],
+          });
+        if (args[0] === "api")
+          return JSON.stringify(
+            args[1].includes("/70/")
+              ? [{ message: "The job has exceeded the maximum execution time of 45m0s" }, { message: "The operation was canceled." }]
+              : [{ message: "The operation was canceled." }],
+          );
+        if (args.includes("--log-failed")) return "";
+        if (args.includes("--log"))
+          return "deploy\tTest\tsourceExport.test.ts hung\ndeploy\tComplete job\tcleanup";
+        throw new Error(`unexpected gh ${args.join(" ")}`);
+      },
+    });
+    await autopilot.setConfig(f.project, { enabled: true });
+    await autopilot.check(f.project, { push: false });
+    await autopilot.idle();
+    const jobs = (await autopilot.state(f.project)).jobs;
+    assert.deepEqual(jobs.map((j) => j.title), ["Fix Deploy"]);
+    assert.match(prompt, /time limit/);
+    assert.match(prompt, /sourceExport\.test\.ts hung/);
+    assert.doesNotMatch(prompt, /cleanup/);
+    await autopilot.close();
+  } finally {
+    await rm(f.root, { recursive: true, force: true });
+  }
+});
+
+test("a CI fix that a newer commit already changed is skipped", async () => {
+  const f = await fixture();
+  try {
+    const autopilot = service(f, {
+      runAgent: async (input) => {
+        // Someone pushes their own fix to the same line while the agent works.
+        await f.pushHuman("human fix\n");
+        await fixAgent(input);
+      },
+      gh: async (_cwd, args) => {
+        if (args[0] === "auth") return "";
+        if (args[1] === "view") return "error TS2322: bad type";
+        const head = await git(f.origin, "rev-parse", "main");
+        return JSON.stringify([
+          { databaseId: 9, headSha: head, status: "completed", conclusion: "failure", workflowName: "CI" },
+        ]);
+      },
+    });
+    await autopilot.setConfig(f.project, { enabled: true });
+    await autopilot.check(f.project, { push: false });
+    await autopilot.idle();
+    const [job] = (await autopilot.state(f.project)).jobs;
+    assert.equal(job.status, "skipped");
+    assert.equal(await git(f.origin, "log", "-1", "--format=%s", "main"), "change human fix");
+    assert.equal((await git(f.repo, "worktree", "list")).split("\n").length, 1);
+    await autopilot.close();
+  } finally {
+    await rm(f.root, { recursive: true, force: true });
+  }
+});
+
 test("the newest run of each deploy workflow is shown", async () => {
   const f = await fixture();
   try {
