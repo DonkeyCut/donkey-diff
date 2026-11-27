@@ -300,6 +300,43 @@ test("a run stopped by its time limit is a failure; other cancels are not", asyn
   }
 });
 
+test("a run stopped by its time limit counts even when no step is named", async () => {
+  const f = await fixture();
+  try {
+    let prompt = "";
+    const autopilot = service(f, {
+      runAgent: async (input) => {
+        prompt = input.prompt;
+        await quietAgent(input);
+      },
+      gh: async (_cwd, args) => {
+        if (args[0] === "auth") return "";
+        const head = await git(f.origin, "rev-parse", "main");
+        if (args[0] === "run" && args[1] === "list")
+          return JSON.stringify([
+            { databaseId: 7, headSha: head, status: "completed", conclusion: "cancelled", workflowName: "Deploy" },
+          ]);
+        if (args[1] === "view" && args.includes("--json"))
+          return JSON.stringify({ jobs: [{ databaseId: 70, conclusion: "cancelled", steps: [] }] });
+        if (args[0] === "api")
+          return JSON.stringify([{ message: "The job has exceeded the maximum execution time of 45m0s" }]);
+        if (args.includes("--log")) return "deploy\tSetup\twhole log";
+        throw new Error(`unexpected gh ${args.join(" ")}`);
+      },
+    });
+    await autopilot.setConfig(f.project, { enabled: true });
+    await autopilot.check(f.project, { push: false });
+    await autopilot.idle();
+    const jobs = (await autopilot.state(f.project)).jobs;
+    assert.deepEqual(jobs.map((j) => j.title), ["Fix Deploy"]);
+    assert.match(prompt, /hit its time limit and was cancelled/);
+    assert.match(prompt, /whole log/);
+    await autopilot.close();
+  } finally {
+    await rm(f.root, { recursive: true, force: true });
+  }
+});
+
 test("a CI fix that a newer commit already changed is skipped", async () => {
   const f = await fixture();
   try {

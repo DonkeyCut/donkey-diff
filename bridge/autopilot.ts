@@ -746,7 +746,8 @@ export class AutopilotService {
       if (FAILED.has(conclusion)) failures.push(run);
       else if (
         conclusion === "cancelled" &&
-        (await this.stalledStep(project.path, Number(run.databaseId)))
+        // "" means it hit the time limit in a step we could not name.
+        (await this.stalledStep(project.path, Number(run.databaseId))) !== null
       )
         failures.push(run);
     }
@@ -817,8 +818,7 @@ export class AutopilotService {
           ]),
         ) as { message?: string }[];
         if (!notes.some((n) => TIME_LIMIT.test(n.message || ""))) continue;
-        step =
-          job.steps?.find((s) => s.conclusion === "cancelled")?.name || "";
+        step = job.steps?.find((s) => s.conclusion === "cancelled")?.name || "";
         break;
       }
     } catch {
